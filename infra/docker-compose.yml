@@ -1,11 +1,38 @@
 name: ${COMPOSE_PROJECT_NAME:-taobao-runtime}
 
 # The service-free `checks` profile is implemented by Make/CI and starts no
-# containers. `core` provides local data-plane dependencies. `full` adds the
-# CDC control plane and Grafana. Flink remains one externally submitted job.
+# containers. Every runtime profile reuses one Flink job. Optional services are
+# isolated behind serving and observability profiles. The cdc profile renders
+# only the deprecated legacy behavior-rule extension.
+x-flink-environment: &flink-environment
+  RUNTIME_PROFILE: ${RUNTIME_PROFILE:-core}
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  KAFKA_TOPIC: ${KAFKA_TOPIC:-user-behavior-events}
+  KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-taobao-stream-job}
+  KAFKA_SECURITY_PROTOCOL: PLAINTEXT
+  SCHEMA_REGISTRY_URL: http://schema-registry:8080/apis/ccompat/v7
+  CLICKHOUSE_ENDPOINT: http://clickhouse:8123
+  CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-local-clickhouse}
+  CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-taobao_behavior}
+  FLINK_CHECKPOINTING_ENABLED: ${FLINK_CHECKPOINTING_ENABLED:-true}
+  FLINK_CHECKPOINT_INTERVAL_MS: ${FLINK_CHECKPOINT_INTERVAL_MS:-60000}
+  FLINK_CHECKPOINT_DIR: file:///var/lib/flink/checkpoints
+  FLINK_RESTART_ATTEMPTS: ${FLINK_RESTART_ATTEMPTS:-3}
+  FLINK_RESTART_DELAY_MS: ${FLINK_RESTART_DELAY_MS:-10000}
+  FLINK_DEDUP_RETENTION_HOURS: ${FLINK_DEDUP_RETENTION_HOURS:-168}
+  CASSANDRA_MODE: ${CASSANDRA_MODE:-}
+  CASSANDRA_HOSTS: cassandra
+  CASSANDRA_PORT: ${CASSANDRA_PORT:-9042}
+  CASSANDRA_DATACENTER: ${CASSANDRA_DATACENTER:-datacenter1}
+  CASSANDRA_KEYSPACE: ${CASSANDRA_KEYSPACE:-taobao_streaming}
+  CASSANDRA_TABLE: ${CASSANDRA_TABLE:-user_active_cart}
+  RULES_KAFKA_TOPIC: ${RULES_KAFKA_TOPIC:-behavior-rules}
+  RULES_CONSUMER_GROUP: ${RULES_CONSUMER_GROUP:-taobao-rule-broadcast}
+
 services:
   kafka:
-    profiles: ["core", "full"]
+    profiles: ["core", "serving", "cdc", "observability"]
     image: ${KAFKA_IMAGE:-apache/kafka:3.9.0}
     hostname: kafka
     ports:
@@ -24,7 +51,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
   schema-registry:
-    profiles: ["core", "full"]
+    profiles: ["core", "serving", "cdc", "observability"]
     image: ${SCHEMA_REGISTRY_IMAGE:-apicurio/apicurio-registry:3.2.5}
     ports:
       - "${SCHEMA_REGISTRY_EXTERNAL_PORT:-8081}:8080"
@@ -32,7 +59,7 @@ services:
       APICURIO_STORAGE_KIND: mem
 
   clickhouse:
-    profiles: ["core", "full"]
+    profiles: ["core", "serving", "cdc", "observability"]
     image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:24.8}
     ports:
       - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
@@ -50,8 +77,41 @@ services:
       timeout: 5s
       retries: 12
 
+  flink-jobmanager:
+    profiles: ["core", "serving", "cdc", "observability"]
+    image: ${FLINK_IMAGE:-flink:1.20.2-scala_2.12-java11}
+    command: jobmanager
+    restart: unless-stopped
+    ports:
+      - "${FLINK_REST_PORT:-8082}:8081"
+    environment:
+      <<: *flink-environment
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        state.checkpoints.dir: file:///var/lib/flink/checkpoints
+        execution.checkpointing.storage: filesystem
+    volumes:
+      - flink_checkpoints:/var/lib/flink/checkpoints
+
+  flink-taskmanager:
+    profiles: ["core", "serving", "cdc", "observability"]
+    image: ${FLINK_IMAGE:-flink:1.20.2-scala_2.12-java11}
+    command: taskmanager
+    restart: unless-stopped
+    depends_on:
+      - flink-jobmanager
+    environment:
+      <<: *flink-environment
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        state.checkpoints.dir: file:///var/lib/flink/checkpoints
+        execution.checkpointing.storage: filesystem
+    volumes:
+      - flink_checkpoints:/var/lib/flink/checkpoints
+
   cassandra:
-    profiles: ["core", "full"]
+    profiles: ["serving"]
     image: ${CASSANDRA_IMAGE:-cassandra:5.0}
     ports:
       - "${CASSANDRA_PORT:-9042}:9042"
@@ -72,7 +132,7 @@ services:
       start_period: 30s
 
   postgres:
-    profiles: ["full"]
+    profiles: ["cdc"]
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     ports:
       - "${POSTGRES_EXTERNAL_PORT:-5432}:5432"
@@ -89,7 +149,7 @@ services:
       retries: 12
 
   debezium-connect:
-    profiles: ["full"]
+    profiles: ["cdc"]
     image: ${DEBEZIUM_CONNECT_IMAGE:-quay.io/debezium/connect:3.2}
     ports:
       - "${CONNECT_EXTERNAL_PORT:-8083}:8083"
@@ -120,7 +180,7 @@ services:
       CONNECT_PLUGIN_PATH: /kafka/connect
 
   grafana:
-    profiles: ["full"]
+    profiles: ["observability"]
     image: ${GRAFANA_IMAGE:-grafana/grafana:11.4.0}
     ports:
       - "${GRAFANA_EXTERNAL_PORT:-3000}:3000"
@@ -135,5 +195,6 @@ services:
 
 volumes:
   clickhouse_data:
+  flink_checkpoints:
   cassandra_data:
   postgres_data:

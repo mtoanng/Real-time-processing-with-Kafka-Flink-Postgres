@@ -9,7 +9,7 @@
       "title": "Accepted events",
       "datasource": {"type": "grafana-clickhouse-datasource", "uid": "taobao-clickhouse"},
       "targets": [
-        {"query": "SELECT count() AS accepted_events FROM raw_behavior_events_deduplicated", "refId": "A"}
+        {"query": "SELECT count() AS accepted_events FROM raw_behavior_events_canonical", "refId": "A"}
       ],
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
     },
@@ -18,7 +18,7 @@
       "title": "Item behavior counts per minute",
       "datasource": {"type": "grafana-clickhouse-datasource", "uid": "taobao-clickhouse"},
       "targets": [
-        {"query": "SELECT window_start AS time, sum(pv_count) AS pv, sum(cart_count) AS cart, sum(fav_count) AS fav, sum(buy_count) AS buy FROM item_metrics_1m_deduplicated GROUP BY window_start ORDER BY time", "refId": "A"}
+        {"query": "SELECT window_start AS time, sum(pv_count) AS pv, sum(cart_count) AS cart, sum(fav_count) AS fav, sum(buy_count) AS buy FROM item_metrics_1m_canonical GROUP BY window_start ORDER BY time", "refId": "A"}
       ],
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
     }

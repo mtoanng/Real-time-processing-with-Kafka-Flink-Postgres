@@ -24,40 +24,56 @@ class RuntimeProfileConfigTest {
     }
 
     @Test
-    void coreRequiresCassandraAndDefaultsCheckpointingOn() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> RuntimeProfileConfig.fromEnvironment(Map.of("RUNTIME_PROFILE", "core")));
-
-        RuntimeProfileConfig config = RuntimeProfileConfig.fromEnvironment(localCoreEnvironment());
-        assertTrue(config.isCassandraEnabled());
+    void coreRequiresNoOptionalExtensionAndDefaultsCheckpointingOn() {
+        RuntimeProfileConfig config =
+                RuntimeProfileConfig.fromEnvironment(Map.of("RUNTIME_PROFILE", "core"));
+        assertFalse(config.isCassandraEnabled());
         assertFalse(config.isCdcEnabled());
         assertFalse(config.isObservabilityEnabled());
         assertTrue(config.checkpointingEnabledByDefault());
+    }
+
+    @Test
+    void servingAddsCassandraWithoutCdcOrObservability() {
+        Map<String, String> environment = localServingEnvironment();
+        RuntimeProfileConfig config = RuntimeProfileConfig.fromEnvironment(environment);
+
+        assertTrue(config.isCassandraEnabled());
+        assertFalse(config.isCdcEnabled());
+        assertFalse(config.isObservabilityEnabled());
         assertEquals("local", config.cassandraConfig().mode());
     }
 
     @Test
-    void fullAddsCdcAndObservabilityToTheSameCore() {
-        Map<String, String> environment = localCoreEnvironment();
-        environment.put("RUNTIME_PROFILE", "full");
+    void cdcAddsOnlyTheExistingRuleControlPlane() {
+        Map<String, String> environment = new HashMap<>();
+        environment.put("RUNTIME_PROFILE", "cdc");
         environment.put("RULES_KAFKA_TOPIC", "behavior-rules");
 
         RuntimeProfileConfig config = RuntimeProfileConfig.fromEnvironment(environment);
 
-        assertTrue(config.isCassandraEnabled());
+        assertFalse(config.isCassandraEnabled());
         assertTrue(config.isCdcEnabled());
-        assertTrue(config.isObservabilityEnabled());
+        assertFalse(config.isObservabilityEnabled());
         assertTrue(config.checkpointingEnabledByDefault());
     }
 
     @Test
-    void fullFailsFastWithoutRulesTopic() {
-        Map<String, String> environment = localCoreEnvironment();
-        environment.put("RUNTIME_PROFILE", "full");
+    void cdcFailsFastWithoutRulesTopic() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> RuntimeProfileConfig.fromEnvironment(environment));
+                () -> RuntimeProfileConfig.fromEnvironment(
+                        Map.of("RUNTIME_PROFILE", "cdc")));
+    }
+
+    @Test
+    void observabilityDoesNotChangeTheJobDataPath() {
+        RuntimeProfileConfig config =
+                RuntimeProfileConfig.fromEnvironment(
+                        Map.of("RUNTIME_PROFILE", "observability"));
+        assertFalse(config.isCassandraEnabled());
+        assertFalse(config.isCdcEnabled());
+        assertTrue(config.isObservabilityEnabled());
     }
 
     @Test
@@ -65,7 +81,7 @@ class RuntimeProfileConfigTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> RuntimeProfileConfig.fromEnvironment(
-                        Map.of("RUNTIME_PROFILE", "serving")));
+                        Map.of("RUNTIME_PROFILE", "full")));
     }
 
     @Test
@@ -105,9 +121,9 @@ class RuntimeProfileConfigTest {
                 "basic.auth.user.info"));
     }
 
-    private static Map<String, String> localCoreEnvironment() {
+    private static Map<String, String> localServingEnvironment() {
         Map<String, String> environment = new HashMap<>();
-        environment.put("RUNTIME_PROFILE", "core");
+        environment.put("RUNTIME_PROFILE", "serving");
         environment.put("CASSANDRA_MODE", "local");
         environment.put("CASSANDRA_HOSTS", "localhost");
         environment.put("CASSANDRA_PORT", "9042");

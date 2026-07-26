@@ -1,5 +1,7 @@
 # Project 1 Learning Package
 
+> Archived learning package for the pre-core-refactor architecture.
+
 This package explains the repository as it exists. The active operational
 serving technology is Apache Cassandra with DataStax Astra DB Serverless as
 the managed target. Older ScyllaDB names are historical migration material,
@@ -20,4 +22,3 @@ DataStream choice without adding a second SQL pipeline.
 Draw the core path and explain why the same event stream has two different
 serving responsibilities: ClickHouse owns history and aggregates, while
 Apache Cassandra serves one user’s active-cart items.
-

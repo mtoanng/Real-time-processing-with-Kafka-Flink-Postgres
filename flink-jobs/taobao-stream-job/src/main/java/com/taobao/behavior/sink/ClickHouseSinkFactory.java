@@ -4,8 +4,8 @@ import com.clickhouse.data.ClickHouseDataType;
 import com.clickhouse.data.ClickHouseFormat;
 import com.taobao.behavior.avro.UserBehaviorEvent;
 import com.taobao.behavior.model.BehaviorAlert;
-import com.taobao.behavior.model.BehaviorAuditEvent;
 import com.taobao.behavior.model.ItemMetrics1m;
+import com.taobao.behavior.model.StreamQualityEvent;
 import java.util.List;
 import java.util.Map;
 import org.apache.flink.api.connector.sink2.Sink;
@@ -48,7 +48,7 @@ public final class ClickHouseSinkFactory {
                 10_000);
     }
 
-    public static Sink<BehaviorAuditEvent> createAuditSink(
+    public static Sink<StreamQualityEvent> createQualitySink(
             String endpoint,
             String user,
             String password,
@@ -60,8 +60,8 @@ public final class ClickHouseSinkFactory {
                 password,
                 database,
                 table,
-                BehaviorAuditEvent.class,
-                new AuditEventMapper(),
+                StreamQualityEvent.class,
+                new QualityEventMapper(),
                 100,
                 2,
                 1_000);
@@ -154,7 +154,10 @@ public final class ClickHouseSinkFactory {
             return List.of(
                     ColumnBinding.dateTime64("window_start", "window_start", 3),
                     ColumnBinding.scalar("item_id", "item_id", ClickHouseDataType.UInt64),
-                    ColumnBinding.scalar("category_id", "category_id", ClickHouseDataType.UInt64),
+                    ColumnBinding.scalar(
+                            "source_category_id",
+                            "source_category_id",
+                            ClickHouseDataType.UInt64),
                     ColumnBinding.scalar("pv_count", "pv_count", ClickHouseDataType.UInt64),
                     ColumnBinding.scalar("cart_count", "cart_count", ClickHouseDataType.UInt64),
                     ColumnBinding.scalar("fav_count", "fav_count", ClickHouseDataType.UInt64),
@@ -165,25 +168,34 @@ public final class ClickHouseSinkFactory {
         }
     }
 
-    private static final class AuditEventMapper extends DataMapper<BehaviorAuditEvent> {
+    private static final class QualityEventMapper extends DataMapper<StreamQualityEvent> {
         @Override
-        public void toMap(BehaviorAuditEvent event, Map<String, Object> out) {
-            out.putAll(ClickHouseRowMapper.auditValues(event));
+        public void toMap(StreamQualityEvent event, Map<String, Object> out) {
+            out.putAll(ClickHouseRowMapper.qualityValues(event));
         }
 
         @Override
         public List<ColumnBinding> bindings() {
             return List.of(
+                    ColumnBinding.scalar(
+                            "quality_event_id", "quality_event_id", ClickHouseDataType.String),
+                    ColumnBinding.scalar(
+                            "quality_type", "quality_type", ClickHouseDataType.String),
                     ColumnBinding.scalar("event_id", "event_id", ClickHouseDataType.String),
-                    ColumnBinding.scalar("replay_run_id", "replay_run_id", ClickHouseDataType.String),
                     ColumnBinding.scalar("user_id", "user_id", ClickHouseDataType.Int64),
                     ColumnBinding.scalar("item_id", "item_id", ClickHouseDataType.Int64),
                     ColumnBinding.scalar("category_id", "category_id", ClickHouseDataType.Int64),
-                    ColumnBinding.scalar("event_time_ms", "event_time_ms", ClickHouseDataType.Int64),
+                    ColumnBinding.scalar(
+                            "behavior_type", "behavior_type", ClickHouseDataType.String),
+                    ColumnBinding.scalar("event_time", "event_time", ClickHouseDataType.Int64),
+                    ColumnBinding.scalar(
+                            "replay_run_id", "replay_run_id", ClickHouseDataType.String),
                     ColumnBinding.scalar("source_sequence", "source_sequence", ClickHouseDataType.Int64),
                     ColumnBinding.scalar("reason_code", "reason_code", ClickHouseDataType.String),
                     ColumnBinding.scalar("reason_message", "reason_message", ClickHouseDataType.String),
-                    ColumnBinding.scalar("record_version", "record_version", ClickHouseDataType.Int64));
+                    ColumnBinding.dateTime64("observed_at", "observed_at", 3),
+                    ColumnBinding.scalar(
+                            "record_version", "record_version", ClickHouseDataType.UInt64));
         }
     }
 

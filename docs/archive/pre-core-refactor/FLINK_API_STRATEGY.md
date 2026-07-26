@@ -1,5 +1,7 @@
 # Flink API Strategy
 
+> Archived pre-core-refactor audit; not an active implementation contract.
+
 ## What Could Use Flink SQL
 
 Several parts of the repository could be expressed with Flink SQL in a team
@@ -78,4 +80,3 @@ Keep the single Java DataStream job. Do not create a second active Flink SQL
 pipeline. SQL remains a reasonable future expression for the ClickHouse
 analytical branch, while the active-cart and broadcast-state branches are
 currently documented against the Java implementation.
-

@@ -3,18 +3,23 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from hashlib import sha256
+from pathlib import Path
 
 from taobao_replay.clickhouse import ClickHouseHttpClient
 
-FIXTURE_WINDOW_START = "2017-11-26 01:00:00"
-
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Verify ClickHouse fixture assertions")
-    result.add_argument("--run-id", required=True)
-    result.add_argument("--expected-raw-count", type=int, default=999)
-    result.add_argument("--expected-invalid-count", type=int, default=1)
-    result.add_argument("--expected-late-count", type=int, default=2)
+    result = argparse.ArgumentParser(
+        description="Verify canonical ClickHouse results for a fresh bounded-demo database"
+    )
+    result.add_argument("--run-id", action="append", required=True)
+    result.add_argument(
+        "--expected-file",
+        type=Path,
+        default=Path(os.getenv("EVIDENCE_DIR", "docs/evidence/latest"))
+        / "expected-reconciliation.json",
+    )
     result.add_argument("--endpoint", default=os.getenv("CLICKHOUSE_ENDPOINT"))
     result.add_argument("--user", default=os.getenv("CLICKHOUSE_USER", "default"))
     result.add_argument("--password", default=os.getenv("CLICKHOUSE_PASSWORD", ""))
@@ -32,77 +37,89 @@ def query_rows(client: ClickHouseHttpClient, sql: str) -> list[dict[str, object]
     return list(result["data"])
 
 
+def stable_digest(rows: list[dict[str, object]]) -> str:
+    canonical = json.dumps(rows, sort_keys=True, separators=(",", ":"))
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def integerized(rows: list[dict[str, object]], integer_fields: set[str]) -> list[dict[str, object]]:
+    return [
+        {key: int(value) if key in integer_fields else value for key, value in row.items()}
+        for row in rows
+    ]
+
+
+def require_equal(label: str, expected: object, actual: object) -> None:
+    if expected != actual:
+        raise SystemExit(f"{label} mismatch: expected {expected!r}, got {actual!r}")
+
+
 def main() -> int:
     args = parser().parse_args()
     if not args.endpoint:
         parser().error("set CLICKHOUSE_ENDPOINT or pass --endpoint")
+    expected = json.loads(args.expected_file.read_text(encoding="utf-8"))
+    require_equal("replay run IDs", expected["replay_run_ids"], args.run_id)
+
     client = ClickHouseHttpClient(args.endpoint, args.user, args.password, args.database)
-    run_id = sql_literal(args.run_id)
-
-    raw_rows = query_rows(
-        client,
-        "SELECT count() AS raw_count FROM raw_behavior_events_deduplicated "
-        f"WHERE replay_run_id = {run_id}",
-    )
-    raw_count = int(raw_rows[0]["raw_count"])
-    if raw_count != args.expected_raw_count:
-        raise SystemExit(f"raw count mismatch: expected {args.expected_raw_count}, got {raw_count}")
-
-    invalid_count = int(
+    raw_rows = integerized(
         query_rows(
             client,
-            "SELECT count() AS event_count FROM invalid_behavior_events_deduplicated "
-            f"WHERE replay_run_id = {run_id}",
-        )[0]["event_count"]
+            "SELECT event_id, user_id, item_id, category_id, behavior_type, "
+            "toUnixTimestamp64Milli(event_time) AS event_time, source_sequence "
+            "FROM raw_behavior_events_canonical ORDER BY event_id",
+        ),
+        {"user_id", "item_id", "category_id", "event_time", "source_sequence"},
     )
-    if invalid_count != args.expected_invalid_count:
-        raise SystemExit(
-            f"invalid count mismatch: expected {args.expected_invalid_count}, got {invalid_count}"
-        )
+    require_equal("canonical raw count", expected["canonical_raw_events"], len(raw_rows))
+    require_equal("canonical raw digest", expected["canonical_raw_digest"], stable_digest(raw_rows))
 
-    late_count = int(
+    metric_rows = integerized(
         query_rows(
             client,
-            "SELECT count() AS event_count FROM late_behavior_events_deduplicated "
-            f"WHERE replay_run_id = {run_id}",
-        )[0]["event_count"]
+            "SELECT toUnixTimestamp64Milli(window_start) AS window_start, "
+            "item_id, source_category_id, pv_count, cart_count, fav_count, buy_count, unique_users "
+            "FROM item_metrics_1m_canonical "
+            "ORDER BY window_start, item_id, source_category_id",
+        ),
+        {
+            "window_start",
+            "item_id",
+            "source_category_id",
+            "pv_count",
+            "cart_count",
+            "fav_count",
+            "buy_count",
+            "unique_users",
+        },
     )
-    if late_count != args.expected_late_count:
-        raise SystemExit(
-            f"late count mismatch: expected {args.expected_late_count}, got {late_count}"
-        )
+    require_equal("canonical metric rows", expected["canonical_metric_rows"], len(metric_rows))
+    require_equal(
+        "canonical metric digest",
+        expected["canonical_metric_digest"],
+        stable_digest(metric_rows),
+    )
 
-    metrics_rows = query_rows(
+    run_filter = ", ".join(sql_literal(run_id) for run_id in args.run_id)
+    quality_rows = query_rows(
         client,
-        "SELECT pv_count, cart_count, fav_count, buy_count, unique_users "
-        "FROM item_metrics_1m_deduplicated "
-        f"WHERE replay_run_id = {run_id} AND item_id = 500 "
-        f"AND window_start = toDateTime64('{FIXTURE_WINDOW_START}', 3, 'UTC')",
+        "SELECT quality_type, count() AS quality_count "
+        "FROM stream_quality_events_canonical "
+        f"WHERE replay_run_id IN ({run_filter}) "
+        "GROUP BY quality_type ORDER BY quality_type",
     )
-    expected_metrics = {
-        "pv_count": 0,
-        "cart_count": 1,
-        "fav_count": 0,
-        "buy_count": 1,
-        "unique_users": 1,
-    }
-    if len(metrics_rows) != 1:
-        raise SystemExit(f"expected one item 500 fixture metric row, got {len(metrics_rows)}")
-    actual_metrics = {key: int(value) for key, value in metrics_rows[0].items()}
-    if actual_metrics != expected_metrics:
-        raise SystemExit(
-            "item 500 metric mismatch: "
-            f"expected {json.dumps(expected_metrics, sort_keys=True)}, "
-            f"got {json.dumps(actual_metrics, sort_keys=True)}"
-        )
+    actual_quality = {str(row["quality_type"]): int(row["quality_count"]) for row in quality_rows}
+    expected_quality = {key: value for key, value in expected["quality_counts"].items() if value}
+    require_equal("quality counts", expected_quality, actual_quality)
 
     print(
         json.dumps(
             {
-                "raw_count": raw_count,
-                "invalid_count": invalid_count,
-                "late_count": late_count,
-                "item_500_metrics": actual_metrics,
+                "canonical_raw_events": len(raw_rows),
+                "canonical_raw_digest": stable_digest(raw_rows),
+                "canonical_metric_rows": len(metric_rows),
+                "canonical_metric_digest": stable_digest(metric_rows),
+                "quality_counts": actual_quality,
             },
             sort_keys=True,
         )

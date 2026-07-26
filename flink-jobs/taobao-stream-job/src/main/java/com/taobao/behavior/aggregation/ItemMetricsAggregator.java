@@ -13,10 +13,13 @@ public class ItemMetricsAggregator
 
     @Override
     public ItemMetricsAccumulator add(UserBehaviorEvent event, ItemMetricsAccumulator accumulator) {
-        if (accumulator.categoryId == 0) {
-            accumulator.categoryId = event.getCategoryId();
-        } else if (accumulator.categoryId != event.getCategoryId()) {
-            throw new IllegalArgumentException("one item must not change category within a window");
+        String replayRunId = event.getReplayRunId().toString();
+        if (event.getSourceSequence() > accumulator.lineageSourceSequence
+                || (event.getSourceSequence() == accumulator.lineageSourceSequence
+                        && (accumulator.replayRunId == null
+                                || replayRunId.compareTo(accumulator.replayRunId) > 0))) {
+            accumulator.replayRunId = replayRunId;
+            accumulator.lineageSourceSequence = event.getSourceSequence();
         }
 
         switch (event.getBehaviorType()) {
@@ -47,10 +50,13 @@ public class ItemMetricsAggregator
     @Override
     public ItemMetricsAccumulator merge(
             ItemMetricsAccumulator left, ItemMetricsAccumulator right) {
-        if (left.categoryId == 0) {
-            left.categoryId = right.categoryId;
-        } else if (right.categoryId != 0 && left.categoryId != right.categoryId) {
-            throw new IllegalArgumentException("cannot merge different categories for one item");
+        if (right.lineageSourceSequence > left.lineageSourceSequence
+                || (right.lineageSourceSequence == left.lineageSourceSequence
+                        && right.replayRunId != null
+                        && (left.replayRunId == null
+                                || right.replayRunId.compareTo(left.replayRunId) > 0))) {
+            left.replayRunId = right.replayRunId;
+            left.lineageSourceSequence = right.lineageSourceSequence;
         }
         left.pvCount += right.pvCount;
         left.cartCount += right.cartCount;

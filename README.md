@@ -1,159 +1,162 @@
-# Taobao Real-Time Customer Behavior Platform
+# Taobao Recoverable Streaming Platform
 
-A junior-friendly streaming portfolio project built from the raw Alibaba/Taobao
-`UserBehavior.csv` event dataset.
+An event-time portfolio project built from the raw Alibaba Tianchi
+`UserBehavior.csv` dataset.
+
+Status:
+
+- **CODEBASE-READY:** verified by the credential-independent checks recorded in
+  [`docs/evidence/latest`](docs/evidence/latest/).
+- **DEPLOYMENT-VERIFIED:** **NOT VERIFIED**; no live service or cloud result is
+  claimed.
+
+## Architecture
 
 ```text
-UserBehavior.csv -> deterministic Python replay -> Kafka + Avro/Schema Registry
-                 -> one Java Flink DataStream job
-                    |-> ClickHouse history, minute metrics, and durable audits
-                    |-> Apache Cassandra per-user active cart
-
-PostgreSQL -> Debezium -> compacted rules topic -> Flink Broadcast State
+Taobao fixture / bounded raw source
+  -> Python deterministic replay
+  -> Kafka + Schema Registry
+  -> one Java Flink DataStream job
+       -> ClickHouse canonical history
+       -> ClickHouse one-minute item/category metrics
+       -> ClickHouse INVALID / DUPLICATE / LATE quality events
 ```
 
-ClickHouse and Cassandra are both core serving systems. ClickHouse owns
-analytical history and rollups; Cassandra owns only the current active cart,
-partitioned by `user_id`. PostgreSQL/Debezium and Grafana belong to the `full`
-profile. The repository does not add ML, a frontend, Kubernetes, S3 event
-storage, or a second Flink job.
+Optional, isolated extensions:
 
-## Status
+```text
+serving:       core -> Cassandra user_active_cart
+observability: Grafana -> ClickHouse canonical views
+```
 
-| Area | Status |
+The checked-in `behavior_rules`/Debezium branch is deprecated legacy code,
+isolated from `core`, and not the target CDC architecture. A separately
+approved future phase will replace it with PostgreSQL `product_catalog` CDC and
+current-state enrichment. Product CDC is **NOT IMPLEMENTED** and **NOT
+VERIFIED**.
+
+See [architecture](docs/ARCHITECTURE.md) and
+[stream semantics](docs/SEMANTICS.md).
+
+## Responsibilities
+
+| Component | Responsibility |
 | --- | --- |
-| Python replay, Avro contracts, Java topology, DDL/CQL, tests, and packaging | **implemented and statically verified** |
-| Local or managed Kafka/Flink/ClickHouse/Cassandra runtime | **requires live deployment verification** |
-| PostgreSQL/Debezium rule updates, alert timers, and Grafana | **implemented and statically verified; requires live deployment verification** |
-| Checkpoint recovery and connector retry behavior | **requires live deployment verification** |
-| End-to-end exactly once or production readiness | **not claimed** |
+| Python | Raw-row validation, deterministic IDs, bounded replay |
+| Kafka / Schema Registry | Transport and Avro contract |
+| Java Flink | Validation, TTL deduplication, event time, metrics, recovery state |
+| ClickHouse | Canonical history, metrics, quality evidence |
+| Cassandra | Optional per-user active-cart lookup only |
+| PostgreSQL / Debezium | Deprecated legacy behavior-rule extension; never clickstream source |
 
-See [Implementation Status](docs/CURRENT_IMPLEMENTATION_STATUS.md) for the
-complete verification boundary.
-
-## Architecture and delivery model
-
-The Flink job consumes checkpointed Kafka input with at-least-once checkpoints.
-External sinks are not transactional with Kafka:
-
-- ClickHouse receives at-least-once writes. Stable logical keys and
-  `ReplacingMergeTree(record_version)` support effectively-once results through
-  the committed `*_deduplicated` views.
-- Cassandra uses idempotent prepared upsert/delete statements on
-  `PRIMARY KEY ((user_id), item_id)`.
-- This is not global transactional exactly-once delivery.
-
-Semantic invalid Avro events, late events, and full-profile abandonment alerts
-are written to durable ClickHouse audit tables. CSV rows that cannot be encoded
-as the Avro contract are rejected by the producer before Kafka.
-
-Detailed design: [Architecture](docs/ARCHITECTURE.md).
-
-## Prerequisites
-
-- Python 3.11+
-- Java 11 and Maven
-- Apache Flink 1.20.2 for runtime execution
-- Docker Compose for local runtime dependencies
-- Bash for operational scripts
-- Terraform 1.6+ only for validation or an explicitly approved deployment
-
-The full raw dataset, `.env`, credentials, Secure Connect Bundles, and Terraform
-state must remain outside Git. Credential-independent tests use
-`tests/fixtures/user_behavior_fixture.csv`.
+`event_id` depends on stable source fields and source sequence.
+`replay_run_id` is lineage only.
 
 ## Checks profile
 
-The `checks` profile starts no services:
+No external service connections:
 
 ```bash
-python -m venv .venv
-# Activate the environment using your shell's convention.
 pip install -e '.[kafka]'
 pip install ruff
-
-make test
-make package
-make infra-config
-make terraform-validate
+make checks
 ```
 
-Equivalent focused commands:
+The equivalent individual commands are documented in
+[the runbook](docs/RUNBOOK.md).
+
+## Minimal core demo
+
+Run the complete stack only on a disposable host with adequate memory:
 
 ```bash
-PYTHONPATH=producer/src python -m unittest discover -s producer/tests -v
-ruff check producer scripts
-ruff format --check producer scripts
-mvn -B -pl flink-jobs/taobao-stream-job -am test
-mvn -B -pl flink-jobs/taobao-stream-job -am package
-docker compose -f infra/docker-compose.yml --profile core config --quiet
-docker compose -f infra/docker-compose.yml --profile full config --quiet
-```
+cp .env.example .env
+set -a
+source .env
+set +a
 
-## Runtime profiles
-
-| Profile | Services and behavior |
-| --- | --- |
-| `checks` | Tests, lint, package, Compose rendering, and Terraform validation; no external services |
-| `core` | Kafka, Schema Registry, one Flink job, ClickHouse, and mandatory Cassandra active cart |
-| `full` | `core` plus PostgreSQL, Debezium, compacted behavior rules, timers, alerts, and Grafana |
-
-The local Compose model provides Kafka, Schema Registry, ClickHouse, and one
-Cassandra node for `core`; `full` adds PostgreSQL, Debezium, and Grafana. Flink
-is installed and submitted separately so the same JAR can run on a disposable
-host or an existing Flink cluster.
-
-Copy `.env.example` to ignored `.env`, export its values, then follow the
-[Local Runbook](docs/LOCAL_RUNBOOK.md). Cassandra supports both:
-
-- `CASSANDRA_MODE=local`: contact points, port, datacenter, and optional
-  username/password;
-- `CASSANDRA_MODE=astra`: ignored Secure Connect Bundle path plus application
-  token.
-
-Configuration reference: [Runtime Configuration](docs/RUNTIME_CONFIGURATION.md).
-
-## Bounded runtime workflow
-
-On a disposable integration host:
-
-```bash
-bash scripts/run.sh
+RUNTIME_PROFILE=core bash scripts/run.sh
+PYTHONPATH=producer/src python scripts/apply_clickhouse_schema.py
 bash scripts/register_schemas.sh
-bash scripts/apply_cassandra_schema.sh
 mvn -B -pl flink-jobs/taobao-stream-job -am package
 FLINK_DETACHED=true bash scripts/run_flink.sh
-bash scripts/replay.sh
-bash scripts/verify_bounded_pipeline.sh fixture-run
+bash scripts/run_replay_identity_experiment.sh
 ```
 
-The bounded verifier independently checks produced, valid raw, invalid, late,
-one-minute metric, and Cassandra active-cart results. It requires live services;
-its presence is not evidence that those services have run.
+Core requires Kafka, Schema Registry, Flink, and ClickHouse. It does not read
+Cassandra, Astra, PostgreSQL, Debezium, or Grafana settings.
 
-## Deployment and recovery
+## Optional profiles
 
-- [Cloud Deployment Runbook](docs/CLOUD_DEPLOYMENT_RUNBOOK.md)
-- [Recovery Verification Runbook](docs/RECOVERY_VERIFICATION_RUNBOOK.md)
-- [Final E2E evidence boundary](docs/evidence/final-e2e/README.md)
+```bash
+# Core plus local/Astra active-cart projection
+RUNTIME_PROFILE=serving bash scripts/run.sh
+bash scripts/apply_cassandra_schema.sh
 
-Terraform checks and plans do not prove deployment. No repository command runs
-`terraform apply` implicitly, and teardown requires an explicit confirmation.
+# Core plus Grafana backed by canonical ClickHouse views
+RUNTIME_PROFILE=observability bash scripts/run.sh
+```
 
-## Project layout
+Every profile submits the same Java JAR.
+
+The legacy `cdc` profile remains renderable only to keep the deprecated
+implementation isolated and compilable during this release. It is not a
+supported release target.
+
+## Canonical verification
+
+Experiment A publishes the same source sequences under two run IDs. Expected
+canonical raw and metric digests remain unchanged; the second valid replay is
+classified as duplicate quality evidence:
+
+```bash
+bash scripts/run_replay_identity_experiment.sh
+```
+
+Canonical consumers query:
 
 ```text
-producer/                         deterministic Python replay and tests
-flink-jobs/taobao-stream-job/     one Java Flink job and tests
-schemas/                          Avro contracts
-infra/clickhouse/                 analytical and audit DDL/query contracts
-infra/cassandra/                  active-cart CQL contracts
-infra/postgres/, infra/debezium/  full-profile control plane
-infra/terraform/                  optional deployment definitions
-scripts/                          checks, bootstrap, run, verify, recovery, teardown
-docs/                             blueprint, status, runbooks, and evidence
-tests/fixtures/                   bounded deterministic input
+raw_behavior_events_canonical
+item_metrics_1m_canonical
+stream_quality_events_canonical
 ```
 
-The authoritative implementation contract is
-[PROJECT1_BLUEPRINT_FINAL.md](docs/PROJECT1_BLUEPRINT_FINAL.md).
+These views explicitly use `FINAL`. Ordinary replacement-table queries are not
+immediately duplicate-free.
+
+## Recovery experiment
+
+Capture an uninterrupted baseline, then execute a controlled TaskManager
+restart after a completed checkpoint:
+
+```bash
+bash scripts/run_checkpoint_experiment.sh
+RECOVERY_TEST_CONFIRM=YES bash scripts/run_flink_recovery_test.sh
+```
+
+The comparator uses stable raw and metric business columns, excluding ingestion
+timestamps and replay lineage. See [operations](docs/OPERATIONS.md).
+
+## Verification boundary
+
+Credential-independent tests prove code, state-harness, DDL/CQL, profile, and
+packaging contracts. They do not prove Kafka permissions, live checkpoints,
+ClickHouse merges, Cassandra connectivity, or recovery on a real cluster.
+
+The platform uses:
+
+- checkpoint-consistent Flink state and Kafka offsets;
+- at-least-once external writes;
+- effectively-once ClickHouse canonical queries;
+- no cross-system transactional exactly-once guarantee.
+
+## Teardown
+
+```bash
+bash scripts/stop.sh
+# Destructive local-volume removal only after checking the Compose project:
+bash scripts/stop.sh --volumes
+```
+
+Cloud provisioning and teardown require separate explicit approval. See
+[the operator runbook](docs/RUNBOOK.md).

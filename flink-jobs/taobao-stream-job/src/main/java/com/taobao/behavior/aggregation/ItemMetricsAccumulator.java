@@ -7,7 +7,8 @@ import java.util.Set;
 public class ItemMetricsAccumulator implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    long categoryId;
+    String replayRunId;
+    long lineageSourceSequence = -1L;
     long pvCount;
     long cartCount;
     long favCount;

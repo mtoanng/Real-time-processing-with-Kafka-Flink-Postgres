@@ -1,5 +1,7 @@
 # Layer 1: Architecture
 
+> Archived learning material; see `docs/ARCHITECTURE.md`.
+
 ## Source and Event Grain
 
 The source is Alibaba Tianchi’s raw `UserBehavior.csv`. One input row is one

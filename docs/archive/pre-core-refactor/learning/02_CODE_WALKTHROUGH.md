@@ -1,5 +1,7 @@
 # Layer 2: Code and Data Walkthrough
 
+> Archived learning material; see `docs/SEMANTICS.md`.
+
 ## Component Map
 
 | Component | Exact path and entrypoint | Input/output | Configuration and infrastructure | Tests | Commands, verification, teardown | Status |

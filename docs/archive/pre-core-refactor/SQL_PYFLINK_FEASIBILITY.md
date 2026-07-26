@@ -1,5 +1,7 @@
 # SQL / PyFlink Migration Feasibility
 
+> Archived pre-core-refactor audit; not an active implementation contract.
+
 Status: historical feasibility audit only. The active blueprint retains one
 Java DataStream job; the checks/core/full and mandatory-Cassandra contracts in
 the current blueprint supersede profile/count examples in this document.

@@ -1,5 +1,7 @@
 # Cloud Deployment Runbook
 
+> Archived pre-core-refactor contract. See `docs/RUNBOOK.md`.
+
 Status: **requires live deployment verification**. This runbook does not
 authorize or perform cloud provisioning.
 

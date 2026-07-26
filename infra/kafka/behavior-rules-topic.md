@@ -1,5 +1,8 @@
 # `behavior-rules` topic
 
+> Deprecated legacy extension. Retained for compatibility only; not a current
+> release target.
+
 The Debezium connector routes `public.behavior_rules` changes to
 `behavior-rules`. Create it with `cleanup.policy=compact`; the record key is the
 PostgreSQL primary key `rule_id`, so the latest version of each rule survives

@@ -1,5 +1,7 @@
 # Java Component Migration Matrix
 
+> Archived pre-core-refactor audit; not an active implementation contract.
+
 Status: historical feasibility audit only. No Java-to-PyFlink migration is
 active; the current blueprint and Java runtime remain authoritative.
 

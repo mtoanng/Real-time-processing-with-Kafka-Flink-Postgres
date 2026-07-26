@@ -13,6 +13,24 @@ public final class EventTestSupport {
             BehaviorType behaviorType,
             long eventTimeMillis,
             long sourceSequence) {
+        return event(
+                userId,
+                itemId,
+                categoryId,
+                behaviorType,
+                eventTimeMillis,
+                sourceSequence,
+                "test-run");
+    }
+
+    public static UserBehaviorEvent event(
+            long userId,
+            long itemId,
+            long categoryId,
+            BehaviorType behaviorType,
+            long eventTimeMillis,
+            long sourceSequence,
+            String replayRunId) {
         return UserBehaviorEvent.newBuilder()
                 .setEventId("event-" + sourceSequence)
                 .setUserId(userId)
@@ -21,7 +39,7 @@ public final class EventTestSupport {
                 .setBehaviorType(behaviorType)
                 .setEventTimeMs(eventTimeMillis)
                 .setSourceSequence(sourceSequence)
-                .setReplayRunId("test-run")
+                .setReplayRunId(replayRunId)
                 .build();
     }
 }

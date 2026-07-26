@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.taobao.behavior.EventTestSupport;
 import com.taobao.behavior.avro.BehaviorType;
 import com.taobao.behavior.model.BehaviorAlert;
-import com.taobao.behavior.model.BehaviorAuditEvent;
 import com.taobao.behavior.model.ItemMetrics1m;
+import com.taobao.behavior.model.StreamQualityEvent;
 import java.time.ZonedDateTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -43,19 +43,26 @@ class ClickHouseMappingTest {
         assertEquals(1L, row.get("cart_count"));
         assertEquals(1L, row.get("buy_count"));
         assertEquals(1L, row.get("unique_users"));
+        assertEquals(50L, row.get("source_category_id"));
         assertEquals("run-3", row.get("replay_run_id"));
         assertEquals(1_511_658_000_000L, row.get("record_version"));
     }
 
     @Test
     void mapsAuditAndAlertContextToDurableColumns() {
-        BehaviorAuditEvent audit = new BehaviorAuditEvent(
-                "event-7", "run-3", 100L, 500L, 50L, 1_511_658_000_000L, 7L,
-                "LATE_EVENT", "event is late");
-        Map<String, Object> auditRow = ClickHouseRowMapper.auditValues(audit);
+        StreamQualityEvent quality = StreamQualityEvent.fromEvent(
+                EventTestSupport.event(
+                        100L, 500L, 50L, BehaviorType.cart, 1_511_658_000_000L, 7L, "run-3"),
+                StreamQualityEvent.QualityType.LATE,
+                "LATE_FOR_AGGREGATION",
+                "event is late",
+                1_511_658_060_000L);
+        Map<String, Object> auditRow = ClickHouseRowMapper.qualityValues(quality);
 
-        assertEquals("LATE_EVENT", auditRow.get("reason_code"));
-        assertEquals(7L, auditRow.get("record_version"));
+        assertEquals("LATE", auditRow.get("quality_type"));
+        assertEquals("LATE_FOR_AGGREGATION", auditRow.get("reason_code"));
+        assertEquals(1_511_658_060_000L, auditRow.get("record_version"));
+        assertEquals(1_511_658_000_000L, auditRow.get("event_time"));
 
         BehaviorAlert alert = new BehaviorAlert(
                 "cart-abandonment:event-7:1:1511658060000",

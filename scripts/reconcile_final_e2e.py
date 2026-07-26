@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Compute bounded expected results independently of the Java Flink job."""
+"""Independently compute canonical bounded results from the raw fixture."""
 
 from __future__ import annotations
 
 import json
 import os
 from collections import Counter, defaultdict
+from collections.abc import Sequence
+from hashlib import sha256
 from pathlib import Path
 
 from taobao_replay.contracts import UserBehaviorEvent
@@ -22,24 +24,76 @@ def semantic_invalid_reason(event: UserBehaviorEvent) -> str | None:
     return None
 
 
-def build_expected(fixture: Path, run_id: str) -> dict[str, object]:
-    produced: list[UserBehaviorEvent] = []
-    producer_rejected = 0
-    source_rows = 0
-    for batch in iter_event_batches(fixture, replay_run_id=run_id):
-        produced.extend(batch.events)
-        producer_rejected += len(batch.issues)
-        source_rows += batch.source_rows
+def stable_digest(rows: Sequence[object]) -> str:
+    canonical = json.dumps(rows, sort_keys=True, separators=(",", ":"))
+    return sha256(canonical.encode("utf-8")).hexdigest()
 
-    valid: list[UserBehaviorEvent] = []
+
+def metric_rows(events: Sequence[UserBehaviorEvent]) -> list[dict[str, int]]:
+    counters: dict[tuple[int, int, int], Counter[str]] = defaultdict(Counter)
+    users: dict[tuple[int, int, int], set[int]] = defaultdict(set)
+    for event in events:
+        key = (
+            event.event_time_ms // 60_000 * 60_000,
+            event.item_id,
+            event.category_id,
+        )
+        counters[key][event.behavior_type] += 1
+        users[key].add(event.user_id)
+    return [
+        {
+            "window_start": key[0],
+            "item_id": key[1],
+            "source_category_id": key[2],
+            "pv_count": counts["pv"],
+            "cart_count": counts["cart"],
+            "fav_count": counts["fav"],
+            "buy_count": counts["buy"],
+            "unique_users": len(users[key]),
+        }
+        for key, counts in sorted(counters.items())
+    ]
+
+
+def build_expected(fixture: Path, run_ids: Sequence[str] | str) -> dict[str, object]:
+    if isinstance(run_ids, str):
+        run_ids = [run_ids]
+    if not run_ids or any(not run_id.strip() for run_id in run_ids):
+        raise ValueError("at least one non-blank replay run ID is required")
+
+    attempts: list[UserBehaviorEvent] = []
+    producer_rejected = 0
+    fixture_source_rows: int | None = None
+    for run_id in run_ids:
+        attempt_rows = 0
+        for batch in iter_event_batches(fixture, replay_run_id=run_id):
+            attempts.extend(batch.events)
+            producer_rejected += len(batch.issues)
+            attempt_rows += batch.source_rows
+        if fixture_source_rows is None:
+            fixture_source_rows = attempt_rows
+        elif fixture_source_rows != attempt_rows:
+            raise AssertionError("fixture row count changed between replay attempts")
+
     invalid: list[UserBehaviorEvent] = []
-    for event in produced:
+    valid: list[UserBehaviorEvent] = []
+    for event in attempts:
         (invalid if semantic_invalid_reason(event) else valid).append(event)
+
+    seen_event_ids: set[str] = set()
+    duplicates: list[UserBehaviorEvent] = []
+    accepted_unique: list[UserBehaviorEvent] = []
+    for event in valid:
+        if event.event_id in seen_event_ids:
+            duplicates.append(event)
+        else:
+            seen_event_ids.add(event.event_id)
+            accepted_unique.append(event)
 
     maximum_timestamp: int | None = None
     on_time: list[UserBehaviorEvent] = []
     late: list[UserBehaviorEvent] = []
-    for event in valid:
+    for event in accepted_unique:
         maximum_timestamp = (
             event.event_time_ms
             if maximum_timestamp is None
@@ -50,7 +104,7 @@ def build_expected(fixture: Path, run_id: str) -> dict[str, object]:
 
     active_cart: dict[int, dict[int, UserBehaviorEvent]] = defaultdict(dict)
     latest_order: dict[tuple[int, int], tuple[int, int]] = {}
-    for event in on_time:
+    for event in accepted_unique:
         if event.behavior_type not in {"cart", "buy"}:
             continue
         key = (event.user_id, event.item_id)
@@ -63,29 +117,63 @@ def build_expected(fixture: Path, run_id: str) -> dict[str, object]:
         else:
             active_cart[event.user_id].pop(event.item_id, None)
 
-    item_500 = Counter(event.behavior_type for event in on_time if event.item_id == 500)
-    valid_behaviors = Counter(event.behavior_type for event in valid)
+    metrics = metric_rows(on_time)
+    item_500_metrics = [
+        row for row in metrics if row["item_id"] == 500 and row["window_start"] == 1_511_658_000_000
+    ]
+    raw_business_rows = sorted(
+        (
+            {
+                "event_id": event.event_id,
+                "user_id": event.user_id,
+                "item_id": event.item_id,
+                "category_id": event.category_id,
+                "behavior_type": event.behavior_type,
+                "event_time": event.event_time_ms,
+                "source_sequence": event.source_sequence,
+            }
+            for event in accepted_unique
+        ),
+        key=lambda row: row["event_id"],
+    )
+    quality_counts = {
+        "INVALID": len(invalid),
+        "DUPLICATE": len(duplicates),
+        "LATE": len(late),
+    }
     return {
-        "fixture": str(fixture),
-        "source_rows": source_rows,
-        "produced_events": len(produced),
+        "fixture": fixture.as_posix(),
+        "replay_run_ids": list(run_ids),
+        "fixture_source_rows": fixture_source_rows or 0,
+        "replay_attempts": len(run_ids),
+        "attempted_source_rows": (fixture_source_rows or 0) * len(run_ids),
         "producer_rejected_rows": producer_rejected,
-        "accepted_raw_events": len(valid),
+        "flink_decoded_rows": len(attempts),
         "invalid_events": len(invalid),
-        "late_events": len(late),
+        "valid_events": len(valid),
+        "duplicate_events": len(duplicates),
+        "accepted_unique_events": len(accepted_unique),
+        "late_for_aggregation_events": len(late),
         "on_time_events": len(on_time),
-        "valid_behavior_counts": dict(sorted(valid_behaviors.items())),
-        "item_500_behavior_counts": dict(sorted(item_500.items())),
-        "item_500_unique_users": len({event.user_id for event in on_time if event.item_id == 500}),
+        "canonical_raw_events": len(accepted_unique),
+        "canonical_raw_digest": stable_digest(raw_business_rows),
+        "canonical_metric_rows": len(metrics),
+        "canonical_metric_digest": stable_digest(metrics),
+        "item_500_metric_values": item_500_metrics,
+        "quality_counts": quality_counts,
         "user_100_active_cart_item_ids": sorted(active_cart[100]),
     }
 
 
 def main() -> int:
     fixture = Path(os.environ.get("FIXTURE_PATH", "tests/fixtures/user_behavior_fixture.csv"))
-    run_id = os.environ.get("REPLAY_RUN_ID", "release-reconciliation")
-    result = build_expected(fixture, run_id)
-    evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "docs/evidence/final-e2e"))
+    run_ids = [
+        value.strip()
+        for value in os.environ.get("REPLAY_RUN_IDS", "fixture-run-a,fixture-run-b").split(",")
+        if value.strip()
+    ]
+    result = build_expected(fixture, run_ids)
+    evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "docs/evidence/latest"))
     evidence_dir.mkdir(parents=True, exist_ok=True)
     output = evidence_dir / "expected-reconciliation.json"
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

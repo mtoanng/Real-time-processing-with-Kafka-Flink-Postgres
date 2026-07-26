@@ -9,23 +9,32 @@ class RuntimeProfileFilesTests(unittest.TestCase):
         self.compose = (REPOSITORY_ROOT / "infra/docker-compose.yml").read_text(encoding="utf-8")
         self.environment = (REPOSITORY_ROOT / ".env.example").read_text(encoding="utf-8")
 
-    def test_core_profile_contains_every_data_plane_service(self) -> None:
-        for service in ("kafka", "schema-registry", "clickhouse", "cassandra"):
+    def test_core_profile_is_kafka_registry_flink_and_clickhouse(self) -> None:
+        for service in (
+            "kafka",
+            "schema-registry",
+            "flink-jobmanager",
+            "flink-taskmanager",
+            "clickhouse",
+        ):
             self.assertIn(f"  {service}:", self.compose)
-        self.assertIn('profiles: ["core", "full"]', self.compose)
+        self.assertIn('profiles: ["core", "serving", "cdc", "observability"]', self.compose)
+        cassandra_section = self.compose.split("  cassandra:", 1)[1].split("  postgres:", 1)[0]
+        self.assertIn('profiles: ["serving"]', cassandra_section)
+        self.assertNotIn('"core"', cassandra_section)
 
-    def test_full_profile_adds_control_plane_and_grafana(self) -> None:
-        for service in ("postgres", "debezium-connect", "grafana"):
-            self.assertIn(f"  {service}:", self.compose)
-        self.assertIn('profiles: ["full"]', self.compose)
+    def test_optional_profiles_isolate_their_services(self) -> None:
+        self.assertIn('profiles: ["serving"]', self.compose)
+        self.assertGreaterEqual(self.compose.count('profiles: ["cdc"]'), 2)
+        self.assertIn('profiles: ["observability"]', self.compose)
 
-    def test_environment_makes_cassandra_and_checkpointing_core_contracts(self) -> None:
+    def test_environment_keeps_cassandra_optional_and_recovery_explicit(self) -> None:
         self.assertIn("RUNTIME_PROFILE=core", self.environment)
-        self.assertIn("RUNTIME_DEPENDENCIES=local", self.environment)
-        self.assertIn("CASSANDRA_MODE=local", self.environment)
-        self.assertIn("CASSANDRA_HOSTS=localhost", self.environment)
+        self.assertIn("CASSANDRA_MODE=\n", self.environment)
         self.assertIn("FLINK_CHECKPOINTING_ENABLED=true", self.environment)
-        self.assertNotIn("CASSANDRA_ENABLED=", self.environment)
+        self.assertIn("FLINK_CHECKPOINT_DIR=file:///var/lib/flink/checkpoints", self.environment)
+        self.assertIn("FLINK_RESTART_ATTEMPTS=3", self.environment)
+        self.assertIn("FLINK_DEDUP_RETENTION_HOURS=168", self.environment)
 
     def test_active_environment_has_no_s3_event_archive_variable(self) -> None:
         self.assertNotIn("S3_ARCHIVE_URI", self.environment)
