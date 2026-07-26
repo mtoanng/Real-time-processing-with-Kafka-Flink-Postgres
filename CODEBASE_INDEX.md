@@ -28,6 +28,7 @@ Active documentation:
 - `docs/SEMANTICS.md`
 - `docs/RUNBOOK.md`
 - `docs/OPERATIONS.md`
+- `docs/learning/`
 - `docs/evidence/latest/`
 
 Everything under `docs/archive/` is historical and not an active contract.

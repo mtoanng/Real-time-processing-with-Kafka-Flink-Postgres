@@ -35,8 +35,9 @@ approved future phase will replace it with PostgreSQL `product_catalog` CDC and
 current-state enrichment. Product CDC is **NOT IMPLEMENTED** and **NOT
 VERIFIED**.
 
-See [architecture](docs/ARCHITECTURE.md) and
-[stream semantics](docs/SEMANTICS.md).
+See [architecture](docs/ARCHITECTURE.md),
+[stream semantics](docs/SEMANTICS.md), and the
+[three-layer codebase learning guide](docs/learning/README.md).
 
 ## Responsibilities
 
