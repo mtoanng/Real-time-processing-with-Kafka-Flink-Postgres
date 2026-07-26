@@ -2,8 +2,8 @@ package com.taobao.behavior.sink;
 
 import com.taobao.behavior.avro.UserBehaviorEvent;
 import com.taobao.behavior.model.BehaviorAlert;
-import com.taobao.behavior.model.BehaviorAuditEvent;
 import com.taobao.behavior.model.ItemMetrics1m;
+import com.taobao.behavior.model.StreamQualityEvent;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -31,7 +31,7 @@ final class ClickHouseRowMapper {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("window_start", utcTime(metrics.getWindowStart()));
         row.put("item_id", metrics.getItemId());
-        row.put("category_id", metrics.getCategoryId());
+        row.put("source_category_id", metrics.getSourceCategoryId());
         row.put("pv_count", metrics.getPvCount());
         row.put("cart_count", metrics.getCartCount());
         row.put("fav_count", metrics.getFavCount());
@@ -42,18 +42,22 @@ final class ClickHouseRowMapper {
         return row;
     }
 
-    static Map<String, Object> auditValues(BehaviorAuditEvent event) {
+    static Map<String, Object> qualityValues(StreamQualityEvent event) {
         Map<String, Object> row = new LinkedHashMap<>();
+        row.put("quality_event_id", event.getQualityEventId());
+        row.put("quality_type", event.getQualityType());
         row.put("event_id", event.getEventId());
-        row.put("replay_run_id", event.getReplayRunId());
         row.put("user_id", event.getUserId());
         row.put("item_id", event.getItemId());
         row.put("category_id", event.getCategoryId());
-        row.put("event_time_ms", event.getEventTimeMs());
+        row.put("behavior_type", event.getBehaviorType());
+        row.put("event_time", event.getEventTime());
+        row.put("replay_run_id", event.getReplayRunId());
         row.put("source_sequence", event.getSourceSequence());
         row.put("reason_code", event.getReasonCode());
         row.put("reason_message", event.getReasonMessage());
-        row.put("record_version", event.getSourceSequence());
+        row.put("observed_at", utcTime(event.getObservedAt()));
+        row.put("record_version", event.getObservedAt());
         return row;
     }
 

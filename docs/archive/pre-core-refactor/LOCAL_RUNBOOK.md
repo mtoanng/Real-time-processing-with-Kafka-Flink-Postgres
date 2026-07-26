@@ -1,5 +1,7 @@
 # Local / Disposable-Host Runbook
 
+> Archived pre-core-refactor runbook. See `docs/RUNBOOK.md`.
+
 The laptop is intended for `checks`. Start the complete runtime only on a
 machine with enough memory for Kafka, ClickHouse, Cassandra, and Flink.
 

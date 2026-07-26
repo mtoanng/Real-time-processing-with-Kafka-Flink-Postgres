@@ -1,5 +1,7 @@
 # Interview and Presentation Guide
 
+> Archived learning material for the pre-core-refactor architecture.
+
 ## 30-Second Pitch
 
 This project replays raw Taobao `UserBehavior.csv` rows through Python into

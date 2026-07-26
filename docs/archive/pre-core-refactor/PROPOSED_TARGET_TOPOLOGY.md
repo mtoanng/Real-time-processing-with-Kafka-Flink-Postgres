@@ -1,5 +1,7 @@
 # Proposed SQL / PyFlink Target Topology
 
+> Archived pre-core-refactor audit; not an active implementation contract.
+
 Status: historical, unapproved proposal. It is not the deployment topology;
 the active repository uses the single Java job defined by the blueprint.
 

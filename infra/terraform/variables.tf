@@ -105,8 +105,11 @@ variable "runtime_profile" {
   default     = "core"
 
   validation {
-    condition     = contains(["core", "full"], var.runtime_profile)
-    error_message = "runtime_profile must be core or full."
+    condition = contains(
+      ["core", "serving", "cdc", "observability"],
+      var.runtime_profile
+    )
+    error_message = "runtime_profile must be core, serving, cdc, or observability."
   }
 }
 

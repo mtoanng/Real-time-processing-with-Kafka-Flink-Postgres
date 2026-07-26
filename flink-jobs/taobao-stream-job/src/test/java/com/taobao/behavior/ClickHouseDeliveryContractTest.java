@@ -24,9 +24,10 @@ class ClickHouseDeliveryContractTest {
 
         String verification = Files.readString(
                 repositoryRoot().resolve("infra/clickhouse/verify.sql"));
-        assertTrue(verification.contains("raw_behavior_events_deduplicated"));
-        assertTrue(verification.contains("item_metrics_1m_deduplicated"));
-        assertTrue(verification.contains("duplicate_transport_rows"));
+        assertTrue(verification.contains("raw_behavior_events_canonical"));
+        assertTrue(verification.contains("item_metrics_1m_canonical"));
+        assertTrue(verification.contains("stream_quality_events_canonical"));
+        assertTrue(verification.contains("raw_transport_rows_above_canonical"));
     }
 
     private static Path repositoryRoot() {

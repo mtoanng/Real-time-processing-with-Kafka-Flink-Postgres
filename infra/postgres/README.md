@@ -1,7 +1,12 @@
 # PostgreSQL control plane
 
-`schema.sql` is the complete project schema. It intentionally contains one table,
+> Deprecated legacy extension. This schema is retained for compatibility and
+> is not the target CDC architecture or part of the core release.
+
+`schema.sql` is the old control-plane schema. It contains one table,
 `behavior_rules`; PostgreSQL is not a serving store for events or user state.
+An approved future phase will replace this branch with Product Catalog CDC
+Enrichment. That phase is not implemented or verified here.
 
 Apply it only on a disposable remote demo PostgreSQL instance:
 

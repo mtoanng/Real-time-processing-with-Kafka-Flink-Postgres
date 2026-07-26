@@ -1,5 +1,7 @@
 # SQL / PyFlink Migration Risks
 
+> Archived pre-core-refactor audit; not an active implementation contract.
+
 Status: historical feasibility audit only. The current release strategy keeps
 the single Java DataStream job.
 

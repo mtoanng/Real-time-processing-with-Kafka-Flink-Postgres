@@ -1,15 +1,15 @@
 package com.taobao.behavior.processing;
 
 import com.taobao.behavior.avro.UserBehaviorEvent;
-import com.taobao.behavior.model.BehaviorAuditEvent;
+import com.taobao.behavior.model.StreamQualityEvent;
 import java.util.Optional;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
 public class EventValidator extends ProcessFunction<UserBehaviorEvent, UserBehaviorEvent> {
-    public static final OutputTag<BehaviorAuditEvent> INVALID_EVENTS =
-            new OutputTag<BehaviorAuditEvent>("invalid-events") {};
+    public static final OutputTag<StreamQualityEvent> INVALID_EVENTS =
+            new OutputTag<StreamQualityEvent>("invalid-events") {};
 
     @Override
     public void processElement(
@@ -20,8 +20,12 @@ public class EventValidator extends ProcessFunction<UserBehaviorEvent, UserBehav
         if (invalidReason.isPresent()) {
             context.output(
                     INVALID_EVENTS,
-                    BehaviorAuditEvent.fromEvent(
-                            event, reasonCode(invalidReason.get()), invalidReason.get()));
+                    StreamQualityEvent.fromEvent(
+                            event,
+                            StreamQualityEvent.QualityType.INVALID,
+                            reasonCode(invalidReason.get()),
+                            invalidReason.get(),
+                            context.timerService().currentProcessingTime()));
             return;
         }
         output.collect(event);

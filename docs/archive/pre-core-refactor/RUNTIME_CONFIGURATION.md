@@ -1,5 +1,7 @@
 # Runtime Configuration
 
+> Archived pre-core-refactor contract. See `docs/OPERATIONS.md`.
+
 Copy `.env.example` or `.env.cloud.example` to a private ignored file. Do not
 commit passwords, application tokens, Secure Connect Bundles, or Terraform
 state.

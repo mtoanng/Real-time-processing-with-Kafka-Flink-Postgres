@@ -1,56 +1,34 @@
 # Codebase Index
 
-## Purpose
-
-Taobao real-time customer behavior platform:
-
-`UserBehavior.csv -> Python replay -> Kafka/Avro -> one Java Flink job -> ClickHouse + Cassandra`
-
-Apache Cassandra is the mandatory active-cart serving layer, with local and
-DataStax Astra deployment modes. PostgreSQL/Debezium is the full-profile rule
-control plane.
-
-## Main Entry Points
-
-| Area | Location | Responsibility |
-| --- | --- | --- |
-| Python package | `producer/src/taobao_replay/` | Raw dataset validation, deterministic IDs, replay, and Kafka publishing |
-| Python tests | `producer/tests/` | Reader, replay, source audit, and Kafka contract tests |
-| Flink job | `flink-jobs/taobao-stream-job/` | Java DataStream topology, validation, watermarks, metrics, sinks, broadcast rules |
-| Flink tests | `flink-jobs/taobao-stream-job/src/test/` | Avro, aggregation, watermark, state, sink and contract tests |
-| Avro schemas | `schemas/` | `UserBehaviorEvent` and `BehaviorRule` contracts |
-| ClickHouse | `infra/clickhouse/` | DDL and verification query pack |
-| Apache Cassandra | `infra/cassandra/` | Per-user active-cart CQL schema and verification |
-| PostgreSQL | `infra/postgres/` | Single `behavior_rules` control-plane table |
-| Debezium | `infra/debezium/` | PostgreSQL connector template and CDC notes |
-| Kafka contracts | `infra/kafka/` | Compacted behavior-rules topic contract |
-| Terraform | `infra/terraform/` | Temporary EC2/networking and optional Confluent Cloud resources |
-| Scripts | `scripts/` | Fixture generation, replay, schema application, demos, checks, teardown |
-| Fixtures | `tests/fixtures/` | Deterministic bounded input for local tests |
-
-## Important Documents
-
-- `AGENTS.md`: repository rules and learning contract.
-- `README.md`: setup, local checks, and remote demo instructions.
-- `docs/PROJECT1_BLUEPRINT_FINAL.md`: authoritative architecture and phase plan.
-- `docs/ARCHITECTURE.md`: current responsibilities and delivery semantics.
-- `docs/CURRENT_IMPLEMENTATION_STATUS.md`: honest verification boundary.
-- `docs/RUNTIME_CONFIGURATION.md`: checks/core/full environment contract.
-- `docs/LOCAL_RUNBOOK.md`: bounded local/disposable-host procedure.
-- `docs/CLOUD_DEPLOYMENT_RUNBOOK.md`: operator deployment and teardown procedure.
-- `docs/RECOVERY_VERIFICATION_RUNBOOK.md`: checkpoint/restart evidence procedure.
-- `docs/evidence/phase-0/` through `docs/evidence/phase-6/`: phase reports.
-
-## Common Checks
-
-```bash
-PYTHONPATH=producer/src python -m unittest discover -s producer/tests -v
-ruff check producer scripts
-mvn -B test
-mvn -B -pl flink-jobs/taobao-stream-job -am package
-terraform -chdir=infra/terraform fmt -check
-terraform -chdir=infra/terraform validate
+```text
+raw Taobao rows -> Python -> Kafka/Avro -> one Java Flink job -> ClickHouse
 ```
 
-Cloud services, Kafka Connect, and full-stack integration are remote-only; do not
-commit `.env`, raw datasets, credentials, or Terraform state.
+Optional release profiles add Cassandra serving or Grafana. Deprecated
+PostgreSQL/Debezium behavior-rule artifacts remain isolated for a later
+replacement migration.
+
+| Area | Location |
+| --- | --- |
+| Replay package and tests | `producer/` |
+| Java Flink job and tests | `flink-jobs/taobao-stream-job/` |
+| Avro contracts | `schemas/` |
+| ClickHouse DDL and queries | `infra/clickhouse/` |
+| Optional Cassandra | `infra/cassandra/` |
+| Deprecated legacy CDC | `infra/postgres/`, `infra/debezium/`, `infra/kafka/` |
+| Compose and Terraform | `infra/docker-compose.yml`, `infra/terraform/` |
+| Verification and experiments | `scripts/` |
+| Deterministic fixture | `tests/fixtures/` |
+
+Active documentation:
+
+- `README.md`
+- `docs/PROJECT1_BLUEPRINT_FINAL.md`
+- `docs/ARCHITECTURE.md`
+- `docs/SEMANTICS.md`
+- `docs/RUNBOOK.md`
+- `docs/OPERATIONS.md`
+- `docs/learning/`
+- `docs/evidence/latest/`
+
+Everything under `docs/archive/` is historical and not an active contract.

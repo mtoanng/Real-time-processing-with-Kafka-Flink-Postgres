@@ -5,18 +5,21 @@ import com.taobao.behavior.aggregation.ItemMetricsWindowFunction;
 import com.taobao.behavior.avro.BehaviorRule;
 import com.taobao.behavior.avro.UserBehaviorEvent;
 import com.taobao.behavior.model.BehaviorAlert;
-import com.taobao.behavior.model.BehaviorAuditEvent;
+import com.taobao.behavior.model.ItemCategoryKey;
 import com.taobao.behavior.model.ItemMetrics1m;
-import com.taobao.behavior.model.ItemRunKey;
+import com.taobao.behavior.model.StreamQualityEvent;
 import com.taobao.behavior.processing.ActiveCartProjector;
 import com.taobao.behavior.processing.CheckpointPolicy;
 import com.taobao.behavior.processing.CartAbandonmentRuleProcessor;
+import com.taobao.behavior.processing.DeduplicationConfig;
+import com.taobao.behavior.processing.EventDeduplicator;
 import com.taobao.behavior.processing.EventValidator;
 import com.taobao.behavior.processing.ImmediateBoundedOutOfOrdernessGenerator;
 import com.taobao.behavior.processing.LateEventRouter;
 import com.taobao.behavior.sink.ClickHouseSinkFactory;
 import com.taobao.behavior.sink.CassandraActiveCartSink;
 import java.time.Duration;
+import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup;
@@ -37,7 +40,8 @@ public final class TaobaoStreamJob {
         RuntimeProfileConfig configuration = RuntimeProfileConfig.fromEnvironment(System.getenv());
         if (configuration.isChecksProfile()) {
             throw new IllegalArgumentException(
-                    "RUNTIME_PROFILE=checks does not submit a Flink job; use core or full");
+                    "RUNTIME_PROFILE=checks does not submit a Flink job; "
+                            + "use core, serving, cdc, or observability");
         }
         String bootstrapServers = configuration.value("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092");
         String topic = configuration.value("KAFKA_TOPIC", "user-behavior-events");
@@ -54,17 +58,28 @@ public final class TaobaoStreamJob {
                                 "FLINK_CHECKPOINTING_ENABLED",
                                 Boolean.toString(configuration.checkpointingEnabledByDefault())),
                         configuration.value("FLINK_CHECKPOINT_INTERVAL_MS", "60000"),
-                        configuration.value("FLINK_CHECKPOINT_DIR", ""));
+                        configuration.value("FLINK_CHECKPOINT_DIR", ""),
+                        configuration.value("FLINK_RESTART_ATTEMPTS", "3"),
+                        configuration.value("FLINK_RESTART_DELAY_MS", "10000"));
+        DeduplicationConfig deduplicationConfig =
+                DeduplicationConfig.fromHours(
+                        configuration.value(
+                                "FLINK_DEDUP_RETENTION_HOURS",
+                                Long.toString(DeduplicationConfig.DEFAULT_RETENTION_HOURS)));
 
         StreamExecutionEnvironment execution =
                 StreamExecutionEnvironment.getExecutionEnvironment();
         execution.setParallelism(Integer.parseInt(configuration.value("FLINK_PARALLELISM", "1")));
         if (checkpointPolicy.isEnabled()) {
             execution.enableCheckpointing(
-                    checkpointPolicy.getIntervalMs(), CheckpointingMode.AT_LEAST_ONCE);
+                    checkpointPolicy.getIntervalMs(), CheckpointingMode.EXACTLY_ONCE);
             execution.getCheckpointConfig().setCheckpointStorage(checkpointPolicy.getStoragePath());
             execution.getCheckpointConfig().setExternalizedCheckpointCleanup(
                     ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+            execution.setRestartStrategy(
+                    RestartStrategies.fixedDelayRestart(
+                            checkpointPolicy.getRestartAttempts(),
+                            Duration.ofMillis(checkpointPolicy.getRestartDelayMs())));
         }
 
         KafkaSource<UserBehaviorEvent> source = KafkaSource.<UserBehaviorEvent>builder()
@@ -88,8 +103,16 @@ public final class TaobaoStreamJob {
                 .process(new EventValidator())
                 .name("ValidateBehaviorEvent")
                 .uid("validate-behavior-event");
-        DataStream<BehaviorAuditEvent> invalid =
+        DataStream<StreamQualityEvent> invalid =
                 valid.getSideOutput(EventValidator.INVALID_EVENTS);
+
+        SingleOutputStreamOperator<UserBehaviorEvent> acceptedUnique =
+                valid.keyBy(event -> event.getEventId().toString())
+                        .process(new EventDeduplicator(deduplicationConfig.retention()))
+                        .name("DeduplicateEventId")
+                        .uid("deduplicate-event-id");
+        DataStream<StreamQualityEvent> duplicate =
+                acceptedUnique.getSideOutput(EventDeduplicator.DUPLICATE_EVENTS);
 
         WatermarkStrategy<UserBehaviorEvent> watermarkStrategy = WatermarkStrategy
                 .<UserBehaviorEvent>forGenerator(
@@ -98,7 +121,7 @@ public final class TaobaoStreamJob {
                 .withTimestampAssigner((event, previousTimestamp) -> event.getEventTimeMs())
                 .withIdleness(Duration.ofSeconds(30));
 
-        SingleOutputStreamOperator<UserBehaviorEvent> onTime = valid
+        SingleOutputStreamOperator<UserBehaviorEvent> onTime = acceptedUnique
                 .assignTimestampsAndWatermarks(watermarkStrategy)
                 .name("AssignEventTimeAndWatermarks")
                 .uid("assign-event-time-watermarks")
@@ -108,28 +131,30 @@ public final class TaobaoStreamJob {
         DataStream<UserBehaviorEvent> late = onTime.getSideOutput(LateEventRouter.LATE_EVENTS);
 
         SingleOutputStreamOperator<ItemMetrics1m> metrics = onTime
-                .keyBy(event -> new ItemRunKey(event.getReplayRunId().toString(), event.getItemId()))
+                .keyBy(event -> new ItemCategoryKey(event.getItemId(), event.getCategoryId()))
                 .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
                 .allowedLateness(Duration.ZERO)
-                .sideOutputLateData(LateEventRouter.LATE_EVENTS)
                 .aggregate(new ItemMetricsAggregator(), new ItemMetricsWindowFunction())
                 .name("ItemMetrics1m")
                 .uid("item-metrics-1m");
 
-        DataStream<UserBehaviorEvent> windowLate =
-                metrics.getSideOutput(LateEventRouter.LATE_EVENTS);
-        DataStream<BehaviorAuditEvent> lateAudit = late
-                .union(windowLate)
-                .map(event -> BehaviorAuditEvent.fromEvent(
-                        event,
-                        "LATE_EVENT",
-                        "event_time is at or behind the current watermark"))
-                .returns(BehaviorAuditEvent.class)
-                .name("BuildLateEventAudit")
-                .uid("build-late-event-audit");
+        DataStream<StreamQualityEvent> lateQuality =
+                late.map(
+                                event ->
+                                        StreamQualityEvent.fromEvent(
+                                                event,
+                                                StreamQualityEvent.QualityType.LATE,
+                                                "LATE_FOR_AGGREGATION",
+                                                "event_time is at or behind the current watermark",
+                                                System.currentTimeMillis()))
+                        .returns(StreamQualityEvent.class)
+                        .name("BuildLateQualityEvent")
+                        .uid("build-late-quality-event");
+        DataStream<StreamQualityEvent> qualityEvents =
+                invalid.union(duplicate, lateQuality);
 
 
-        valid.sinkTo(
+        acceptedUnique.sinkTo(
                         ClickHouseSinkFactory.createRawSink(
                                 clickHouseEndpoint,
                                 clickHouseUser,
@@ -138,24 +163,15 @@ public final class TaobaoStreamJob {
                                 "raw_behavior_events"))
                 .name("WriteRawBehaviorEvents")
                 .uid("write-raw-behavior-events");
-        invalid.sinkTo(
-                        ClickHouseSinkFactory.createAuditSink(
+        qualityEvents.sinkTo(
+                        ClickHouseSinkFactory.createQualitySink(
                                 clickHouseEndpoint,
                                 clickHouseUser,
                                 clickHousePassword,
                                 clickHouseDatabase,
-                                "invalid_behavior_events"))
-                .name("WriteInvalidBehaviorEvents")
-                .uid("write-invalid-behavior-events");
-        lateAudit.sinkTo(
-                        ClickHouseSinkFactory.createAuditSink(
-                                clickHouseEndpoint,
-                                clickHouseUser,
-                                clickHousePassword,
-                                clickHouseDatabase,
-                                "late_behavior_events"))
-                .name("WriteLateBehaviorEvents")
-                .uid("write-late-behavior-events");
+                                "stream_quality_events"))
+                .name("WriteStreamQualityEvents")
+                .uid("write-stream-quality-events");
         metrics.sinkTo(
                         ClickHouseSinkFactory.createItemMetricsSink(
                                 clickHouseEndpoint,
@@ -165,14 +181,16 @@ public final class TaobaoStreamJob {
                                 "item_metrics_1m"))
                 .name("WriteItemMetrics1m")
                 .uid("write-item-metrics-1m");
-        onTime
-                .keyBy(UserBehaviorEvent::getUserId)
-                .process(new ActiveCartProjector())
-                .name("ProjectUserActiveCart")
-                .uid("project-user-active-cart")
-                .addSink(new CassandraActiveCartSink(configuration.cassandraConfig()))
-                .name("WriteUserActiveCart")
-                .uid("write-user-active-cart");
+        if (configuration.isCassandraEnabled()) {
+            acceptedUnique
+                    .keyBy(UserBehaviorEvent::getUserId)
+                    .process(new ActiveCartProjector())
+                    .name("ProjectUserActiveCart")
+                    .uid("project-user-active-cart")
+                    .addSink(new CassandraActiveCartSink(configuration.cassandraConfig()))
+                    .name("WriteUserActiveCart")
+                    .uid("write-user-active-cart");
+        }
         if (configuration.isCdcEnabled()) {
             KafkaSource<BehaviorRule> rulesSource = KafkaSource.<BehaviorRule>builder()
                     .setBootstrapServers(bootstrapServers)

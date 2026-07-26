@@ -15,7 +15,9 @@ package:
 
 infra-config:
 	docker compose -f infra/docker-compose.yml --profile core config --quiet
-	docker compose -f infra/docker-compose.yml --profile full config --quiet
+	docker compose -f infra/docker-compose.yml --profile serving config --quiet
+	docker compose -f infra/docker-compose.yml --profile cdc config --quiet
+	docker compose -f infra/docker-compose.yml --profile observability config --quiet
 
 remote-up:
 	bash scripts/run.sh

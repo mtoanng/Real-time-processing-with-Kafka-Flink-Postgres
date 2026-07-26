@@ -1,5 +1,7 @@
 # Recovery Verification Runbook
 
+> Archived pre-core-refactor runbook. See `docs/OPERATIONS.md`.
+
 Status: **requires live deployment verification**.
 
 ## Expected behavior
@@ -34,4 +36,3 @@ business results.
 
 Store sanitized evidence under `docs/evidence/final-e2e/`. Never store tokens,
 Secure Connect Bundles, private keys, or full raw data.
-

@@ -7,7 +7,7 @@ public class ItemMetrics1m implements Serializable {
 
     private long windowStart;
     private long itemId;
-    private long categoryId;
+    private long sourceCategoryId;
     private long pvCount;
     private long cartCount;
     private long favCount;
@@ -20,7 +20,7 @@ public class ItemMetrics1m implements Serializable {
     public ItemMetrics1m(
             long windowStart,
             long itemId,
-            long categoryId,
+            long sourceCategoryId,
             long pvCount,
             long cartCount,
             long favCount,
@@ -29,7 +29,7 @@ public class ItemMetrics1m implements Serializable {
             String replayRunId) {
         this.windowStart = windowStart;
         this.itemId = itemId;
-        this.categoryId = categoryId;
+        this.sourceCategoryId = sourceCategoryId;
         this.pvCount = pvCount;
         this.cartCount = cartCount;
         this.favCount = favCount;
@@ -54,12 +54,12 @@ public class ItemMetrics1m implements Serializable {
         this.itemId = itemId;
     }
 
-    public long getCategoryId() {
-        return categoryId;
+    public long getSourceCategoryId() {
+        return sourceCategoryId;
     }
 
-    public void setCategoryId(long categoryId) {
-        this.categoryId = categoryId;
+    public void setSourceCategoryId(long sourceCategoryId) {
+        this.sourceCategoryId = sourceCategoryId;
     }
 
     public long getPvCount() {
@@ -113,7 +113,7 @@ public class ItemMetrics1m implements Serializable {
     @Override
     public String toString() {
         return "ItemMetrics1m{windowStart=" + windowStart + ", itemId=" + itemId
-                + ", categoryId=" + categoryId + ", pv=" + pvCount + ", cart="
+                + ", sourceCategoryId=" + sourceCategoryId + ", pv=" + pvCount + ", cart="
                 + cartCount + ", fav=" + favCount + ", buy=" + buyCount
                 + ", uniqueUsers=" + uniqueUsers + ", replayRunId='" + replayRunId + "'}";
     }

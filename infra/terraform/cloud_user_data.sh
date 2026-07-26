@@ -11,7 +11,7 @@ ENV_FILE=/etc/taobao-runtime.env
 dnf install -y docker git python3 java-11-amazon-corretto-headless tar gzip curl jq
 systemctl enable --now docker
 usermod -aG docker ec2-user
-install -d -m 0755 "$APP_ROOT" "$RUNTIME_ROOT" /etc/taobao
+install -d -m 0755 "$APP_ROOT" "$RUNTIME_ROOT" /etc/taobao /var/lib/taobao-flink/checkpoints
 
 download_checked() {
   local url="$1" destination="$2" checksum="$3"
@@ -49,6 +49,12 @@ cat > "$ENV_FILE" <<'RUNTIME_ENV'
 RUNTIME_PROFILE=${runtime_profile}
 RUNTIME_DEPENDENCIES=managed
 FLINK_BIN=/opt/taobao/flink/bin/flink
+FLINK_CHECKPOINTING_ENABLED=true
+FLINK_CHECKPOINT_INTERVAL_MS=60000
+FLINK_CHECKPOINT_DIR=file:///var/lib/taobao-flink/checkpoints
+FLINK_RESTART_ATTEMPTS=3
+FLINK_RESTART_DELAY_MS=10000
+FLINK_DEDUP_RETENTION_HOURS=168
 COMPOSE_FILE=/opt/taobao/runtime/infra/docker-compose.yml
 RUNTIME_ROOT=/opt/taobao/runtime
 START_FLINK=false
@@ -62,7 +68,7 @@ source /etc/taobao-runtime.env
 cd "$${RUNTIME_ROOT:?RUNTIME_ROOT is required}"
 test -f "$COMPOSE_FILE"
 case "$${RUNTIME_PROFILE:?RUNTIME_PROFILE is required}" in
-  core|full) ;;
+  core|serving|cdc|observability) ;;
   *) echo "Unsupported RUNTIME_PROFILE" >&2; exit 2 ;;
 esac
 bash scripts/run.sh

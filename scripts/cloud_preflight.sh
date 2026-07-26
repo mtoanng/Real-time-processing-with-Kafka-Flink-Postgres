@@ -30,16 +30,18 @@ check_tcp() {
 require KAFKA_BOOTSTRAP_SERVERS
 require SCHEMA_REGISTRY_URL
 require CLICKHOUSE_ENDPOINT
-require CASSANDRA_MODE
-require CASSANDRA_KEYSPACE
-require CASSANDRA_TABLE
+runtime_profile="${RUNTIME_PROFILE:-core}"
 
 KAFKA_HOST="${KAFKA_BOOTSTRAP_SERVERS%:*}"
 KAFKA_PORT="${KAFKA_BOOTSTRAP_SERVERS##*:}"
 check_tcp "Kafka" "$KAFKA_HOST" "$KAFKA_PORT"
 check_url "Schema Registry" "${SCHEMA_REGISTRY_URL%/}/subjects"
 check_url "ClickHouse" "$CLICKHOUSE_ENDPOINT"
-case "$CASSANDRA_MODE" in
+if [ "$runtime_profile" = serving ]; then
+  require CASSANDRA_MODE
+  require CASSANDRA_KEYSPACE
+  require CASSANDRA_TABLE
+  case "$CASSANDRA_MODE" in
   local)
     require CASSANDRA_HOSTS
     require CASSANDRA_DATACENTER
@@ -59,7 +61,8 @@ case "$CASSANDRA_MODE" in
     echo "ERROR: CASSANDRA_MODE must be local or astra" >&2
     exit 2
     ;;
-esac
+  esac
+fi
 
 if [ -n "${GRAFANA_ENDPOINT:-}" ]; then
   check_url "Grafana" "${GRAFANA_ENDPOINT%/}/api/health"

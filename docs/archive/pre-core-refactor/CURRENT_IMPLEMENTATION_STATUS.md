@@ -1,5 +1,7 @@
 # Current Implementation Status
 
+> Archived pre-core-refactor status. See `docs/evidence/latest/`.
+
 Audit boundary: credential-independent codebase completion. No cloud resources
 were created and no live service result is claimed.
 

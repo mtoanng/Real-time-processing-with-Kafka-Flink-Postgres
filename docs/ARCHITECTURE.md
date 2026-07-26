@@ -1,79 +1,71 @@
 # Architecture
 
-## Official topology
+## Core data plane
 
 ```text
-Taobao UserBehavior.csv
-        |
-        v
-Python deterministic replay
-        |
-        v
-Kafka + Avro + Schema Registry
-        |
-        v
-one Java Flink DataStream job
-  |-- validation -------------> ClickHouse invalid_behavior_events
-  |-- event time / watermark -> ClickHouse late_behavior_events
-  |-- valid raw -------------> ClickHouse raw_behavior_events
-  |-- one-minute windows ----> ClickHouse item_metrics_1m
-  |-- keyed active cart -----> Cassandra user_active_cart
-  `-- Broadcast State/timers -> ClickHouse behavior_alerts (`full` only)
-
-PostgreSQL -> Debezium -> compacted behavior-rules topic ----^
+UserBehavior.csv fixture/bounded subset
+  -> Python replay (event_id, replay_run_id)
+  -> Kafka Avro topic + Schema Registry
+  -> one Java Flink job
+       -> semantic validation
+       -> event_id keyed State-TTL deduplication
+       -> ClickHouse canonical raw
+       -> timestamps/watermarks
+       -> one-minute (item_id, source_category_id) metrics
+       -> ClickHouse stream quality
 ```
 
-There is one Flink job and one replay producer. PostgreSQL/Debezium is a
-control plane, not a serving database.
+There is one Flink deployment artifact and one source topic for behavior
+events. Debezium is never the behavior-event source.
 
-## Storage responsibilities
+## Runtime boundaries
 
-| System | Owns | Does not own |
+| Profile | Services | Java branches |
 | --- | --- | --- |
-| ClickHouse | Accepted event history, one-minute item metrics, invalid/late audits, behavior alerts, analytical queries | Current per-user operational state |
-| Cassandra | Current active-cart rows queried by one `user_id` partition | Raw history, rollups, arbitrary analytics |
-| PostgreSQL | Versioned behavior-rule source rows | User activity or active carts |
+| `checks` | None | Job not submitted |
+| `core` | Kafka, Schema Registry, Flink, ClickHouse | Canonical raw, metrics, quality |
+| `serving` | Core plus Cassandra | Core plus active-cart projection |
+| `cdc` | Deprecated legacy PostgreSQL/Debezium profile | Legacy Broadcast State/timers only |
+| `observability` | Core plus Grafana | Core job unchanged |
 
-The Cassandra primary key is `PRIMARY KEY ((user_id), item_id)`. A `cart`
-upserts one item; a `buy` deletes it; `pv` and `fav` do nothing. Flink keyed
-state compares event time and then source sequence so a stale cart cannot
-recreate an item after a newer buy.
+## Storage ownership
 
-## Event and time contracts
+ClickHouse owns immutable analytical history as a logical model, materialized
+with replacement-capable physical tables. It also owns one-minute analytical
+rollups and durable quality classifications.
 
-One CSV row becomes one `UserBehaviorEvent`. Its deterministic `event_id` is
-derived from the five source values and zero-based source sequence; replay run
-ID is deliberately excluded. Kafka is keyed by `user_id`.
+Cassandra is optional and owns only current `user_active_cart` rows for lookup
+by `user_id`. It is not analytical history.
 
-Flink emits an immediate watermark at `maximum event time - 5,001 ms`. A valid
-event at or behind the current watermark is late. Valid late events remain in
-raw ClickHouse history but do not affect minute metrics, active cart, or rule
-timers.
+The existing PostgreSQL/Debezium `behavior_rules` control plane, Broadcast
+State processor, cart-abandonment timers, and `behavior_alerts` sink are
+deprecated legacy artifacts. They are isolated from `core` and are not a
+current release target.
 
-## Delivery semantics
+## CDC migration decision
 
-| Boundary | Model | Consequence |
-| --- | --- | --- |
-| Kafka to Flink | Checkpointed at least once | Records may be processed again after failure. |
-| Flink to ClickHouse | Non-transactional at-least-once sink | Physical duplicates can be inserted. |
-| ClickHouse query contract | Stable logical keys plus `ReplacingMergeTree(record_version)` and deduplicated views | Business results are effectively once after explicit deduplication. |
-| Flink to Cassandra | Idempotent prepared upsert/delete by primary key | Retrying the same cart mutation converges to the same row state. |
+A separately approved phase will replace, not coexist with, the legacy rule
+branch:
 
-At-least-once transport describes delivery attempts. Idempotence describes the
-effect of repeating a write. Effectively-once describes the committed query
-result after deduplication. None of these creates a distributed transaction
-across Kafka, ClickHouse, and Cassandra, so the platform does not claim global
-exactly-once delivery.
+```text
+PostgreSQL product_catalog
+  -> Debezium
+  -> Kafka product changelog
+  -> Flink current-state product enrichment
+```
 
-## Runtime profiles
+That phase is **NOT IMPLEMENTED** and **NOT VERIFIED**. It must preserve
+`raw_behavior_events` as source-faithful canonical history, keep core metrics
+on `source_category_id`, and make all product data optional to the core path.
+No product schema, connector, state, enriched table, or Cassandra product
+snapshot field exists in this release.
 
-- `checks`: no services; unit, contract, format, package, Compose, Terraform,
-  and secret checks.
-- `core`: Kafka, Schema Registry, one Flink job, ClickHouse, and Cassandra.
-- `full`: core plus PostgreSQL, Debezium, Broadcast State, event-time rule
-  timers, durable alerts, and Grafana.
+## Recovery boundary
 
-`core` and `full` fail before Flink execution if Cassandra configuration is
-missing. Cassandra connection mode changes only the session builder; active-cart
-business logic and prepared statements are shared.
+Flink checkpoints contain Kafka offsets, event-ID dedup state, window state,
+and optional active-cart/control-plane state. Stable UIDs protect operator
+identity across process restarts of the same artifact.
 
+ClickHouse and Cassandra are external systems, not participants in a Flink
+distributed transaction. Deterministic identifiers and idempotent logical keys
+make bounded replay converge through canonical reads.

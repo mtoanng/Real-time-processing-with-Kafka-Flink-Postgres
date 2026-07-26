@@ -15,8 +15,11 @@ final class RuntimeProfileConfig {
         runtimeProfile = value("RUNTIME_PROFILE", "core").toLowerCase(Locale.ROOT);
         if (!"checks".equals(runtimeProfile)
                 && !"core".equals(runtimeProfile)
-                && !"full".equals(runtimeProfile)) {
-            throw new IllegalArgumentException("RUNTIME_PROFILE must be checks, core, or full");
+                && !"serving".equals(runtimeProfile)
+                && !"cdc".equals(runtimeProfile)
+                && !"observability".equals(runtimeProfile)) {
+            throw new IllegalArgumentException(
+                    "RUNTIME_PROFILE must be checks, core, serving, cdc, or observability");
         }
         validateProfile();
         kafkaProperties();
@@ -35,15 +38,15 @@ final class RuntimeProfileConfig {
     }
 
     boolean isCassandraEnabled() {
-        return !isChecksProfile();
+        return "serving".equals(runtimeProfile);
     }
 
     boolean isCdcEnabled() {
-        return "full".equals(runtimeProfile);
+        return "cdc".equals(runtimeProfile);
     }
 
     boolean isObservabilityEnabled() {
-        return "full".equals(runtimeProfile);
+        return "observability".equals(runtimeProfile);
     }
 
     boolean checkpointingEnabledByDefault() {

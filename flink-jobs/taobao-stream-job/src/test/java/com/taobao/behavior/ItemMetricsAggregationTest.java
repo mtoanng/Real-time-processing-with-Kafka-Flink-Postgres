@@ -31,16 +31,41 @@ class ItemMetricsAggregationTest {
                 accumulator);
 
         ItemMetrics1m metrics =
-                ItemMetricsWindowFunction.toMetrics("test-run", 500L, 0L, accumulator);
+                ItemMetricsWindowFunction.toMetrics(500L, 50L, 0L, accumulator);
 
         assertEquals(0L, metrics.getWindowStart());
         assertEquals(500L, metrics.getItemId());
-        assertEquals(50L, metrics.getCategoryId());
+        assertEquals(50L, metrics.getSourceCategoryId());
         assertEquals(2L, metrics.getPvCount());
         assertEquals(1L, metrics.getCartCount());
         assertEquals(1L, metrics.getFavCount());
         assertEquals(1L, metrics.getBuyCount());
         assertEquals(3L, metrics.getUniqueUsers());
         assertEquals("test-run", metrics.getReplayRunId());
+    }
+
+    @Test
+    void replayRunIsLineageAndDoesNotChangeTheBusinessMetric() {
+        ItemMetricsAggregator aggregator = new ItemMetricsAggregator();
+        ItemMetricsAccumulator runA = aggregator.createAccumulator();
+        ItemMetricsAccumulator runB = aggregator.createAccumulator();
+        runA =
+                aggregator.add(
+                        EventTestSupport.event(
+                                1L, 500L, 50L, BehaviorType.pv, 10_000L, 7L, "run-a"),
+                        runA);
+        runB =
+                aggregator.add(
+                        EventTestSupport.event(
+                                1L, 500L, 50L, BehaviorType.pv, 10_000L, 7L, "run-b"),
+                        runB);
+
+        ItemMetrics1m first = ItemMetricsWindowFunction.toMetrics(500L, 50L, 0L, runA);
+        ItemMetrics1m second = ItemMetricsWindowFunction.toMetrics(500L, 50L, 0L, runB);
+
+        assertEquals(first.getWindowStart(), second.getWindowStart());
+        assertEquals(first.getItemId(), second.getItemId());
+        assertEquals(first.getSourceCategoryId(), second.getSourceCategoryId());
+        assertEquals(first.getPvCount(), second.getPvCount());
     }
 }

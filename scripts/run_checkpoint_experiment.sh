@@ -1,22 +1,28 @@
 #!/usr/bin/env bash
-# Prepare a remote checkpoint/restart experiment without triggering a failure.
+# Print the exact two-run recovery workflow without causing a failure.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-: "${FLINK_CHECKPOINT_DIR:?set FLINK_CHECKPOINT_DIR to durable remote storage}"
-: "${FLINK_BIN:=flink}"
+: "${FLINK_CHECKPOINT_DIR:?set FLINK_CHECKPOINT_DIR to persistent storage}"
 
-export FLINK_CHECKPOINTING_ENABLED=true
-export FLINK_CHECKPOINT_INTERVAL_MS="${FLINK_CHECKPOINT_INTERVAL_MS:-60000}"
+cat <<'STEPS'
+Experiment B requires a disposable Linux host and a fresh ClickHouse database.
 
-echo "Checkpoint policy prepared:"
-echo "  storage: ${FLINK_CHECKPOINT_DIR}"
-echo "  interval_ms: ${FLINK_CHECKPOINT_INTERVAL_MS}"
-echo ""
-echo "Next, on the disposable Flink host:"
-echo "  1. FLINK_DETACHED=true bash scripts/run_flink.sh"
-echo "  2. Record the job ID and wait for at least one completed checkpoint."
-echo "  3. Perform one controlled TaskManager/job failure."
-echo "  4. Confirm the same job resumes from the checkpoint and replay counts remain stable."
-echo "  5. Capture the Flink UI or CLI log and destroy the demo resources."
+1. Uninterrupted baseline:
+   - start the same core profile and submit the single job;
+   - replay the fixture once;
+   - capture stable business columns:
+     PYTHONPATH=producer/src python scripts/canonical_snapshot.py capture \
+       --output docs/evidence/latest/recovery/uninterrupted.json
+
+2. Recovery run against another fresh database:
+   - submit the same JAR and record FLINK_JOB_ID;
+   - set FLINK_FAILURE_COMMAND to restart one TaskManager;
+   - set BASELINE_SNAPSHOT to uninterrupted.json;
+   - run:
+     RECOVERY_TEST_CONFIRM=YES bash scripts/run_flink_recovery_test.sh
+
+The recovery script waits for a completed checkpoint before the failure and
+compares canonical raw/metrics. Under serving it also compares active-cart rows.
+STEPS

@@ -1,5 +1,7 @@
 # Failures, Trade-offs, and Claims
 
+> Archived learning material; see `docs/OPERATIONS.md`.
+
 ## Failure Scenarios
 
 | Failure | Expected boundary | What is not proven |

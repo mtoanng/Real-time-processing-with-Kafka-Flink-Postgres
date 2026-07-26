@@ -105,8 +105,8 @@ Reason:
 ```text
 Taobao -> Python replay -> Kafka/Schema Registry -> one Java Flink job
         -> ClickHouse
-        -> Apache Cassandra active-cart serving in every runtime profile
-        -> PostgreSQL/Debezium control plane in optional Milestone C
+        -> optional Apache Cassandra active-cart serving profile
+        -> deprecated behavior-rule CDC artifacts isolated from core
 ```
 
 Rules:
@@ -115,9 +115,14 @@ Rules:
 - Java owns the Flink DataStream core.
 - ClickHouse stores analytical history and rollups.
 - Apache Cassandra stores bounded per-user active-cart state only and is
-  mandatory for `core` and `full`; local Cassandra and DataStax Astra DB
-  Serverless share one business-logic path.
-- PostgreSQL/Debezium is optional advanced control-plane work, not serving.
+  optional under `serving`; local Cassandra and DataStax Astra DB Serverless
+  share one business-logic path.
+- The existing PostgreSQL/Debezium `behavior_rules` branch is deprecated
+  legacy code, not the target CDC architecture and not part of the core
+  release target.
+- A separately approved future phase will replace, not coexist with, that
+  branch using `product_catalog` CDC and current-state enrichment. Product CDC
+  is not implemented or verified in the current phase.
 - Confluent Cloud provides Kafka and Schema Registry for final cloud E2E; do not
   add Amazon MSK or self-hosted Kafka to the final topology.
 - Do not add Spark, Airflow, MongoDB, Redis, Elasticsearch, Kubernetes, ML, recommendation, arbitrary SQL APIs, or another serving database.

@@ -1,0 +1,42 @@
+{
+  "accepted_unique_events": 999,
+  "attempted_source_rows": 2000,
+  "canonical_metric_digest": "97d20975b81d59dcda2185786b10a7baa5a2ede1c0e4c68af26aa8fbb7f938cf",
+  "canonical_metric_rows": 995,
+  "canonical_raw_digest": "2c41ded73e7a499fce9a34d080f2d35ef39b968c23850de1084e5a4852e579b5",
+  "canonical_raw_events": 999,
+  "duplicate_events": 999,
+  "fixture": "tests/fixtures/user_behavior_fixture.csv",
+  "fixture_source_rows": 1000,
+  "flink_decoded_rows": 2000,
+  "invalid_events": 2,
+  "item_500_metric_values": [
+    {
+      "buy_count": 1,
+      "cart_count": 1,
+      "fav_count": 0,
+      "item_id": 500,
+      "pv_count": 0,
+      "source_category_id": 50,
+      "unique_users": 1,
+      "window_start": 1511658000000
+    }
+  ],
+  "late_for_aggregation_events": 2,
+  "on_time_events": 997,
+  "producer_rejected_rows": 0,
+  "quality_counts": {
+    "DUPLICATE": 999,
+    "INVALID": 2,
+    "LATE": 2
+  },
+  "replay_attempts": 2,
+  "replay_run_ids": [
+    "fixture-run-a",
+    "fixture-run-b"
+  ],
+  "user_100_active_cart_item_ids": [
+    501
+  ],
+  "valid_events": 1998
+}
