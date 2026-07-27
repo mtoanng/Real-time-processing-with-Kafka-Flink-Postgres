@@ -94,7 +94,7 @@ Assume the same source row and sequence are published again.
 4. If the state is within TTL, `EventDeduplicator` emits
    `DUPLICATE_WITHIN_RETENTION`.
 5. The duplicate does not reach raw history, watermark advancement, metrics, or
-   Cassandra.
+   Redis.
 6. Its quality ID includes the replay run ID, so separate attempts remain
    separately accountable.
 
@@ -210,9 +210,10 @@ buy  at time 120, sequence 2
 
 1. The cart creates active `CartItemState`, preserves added time 100, and emits
    an upsert.
-2. Cassandra stores partition 100, clustering item 500.
+2. Redis stores field `500` in Hash `taobao:active_cart:{100}` and refreshes
+   its TTL.
 3. The buy is newer, stores inactive state, and emits a delete.
-4. Cassandra removes item 500 from user 100’s active cart.
+4. Redis removes field `500` from user 100’s active-cart Hash.
 
 The state remains inactive so a stale cart can be rejected later.
 
@@ -231,11 +232,12 @@ is stale.
 
 Repeated external writes may occur around failure recovery.
 
-- An upsert to the same `(user_id, item_id)` replaces the row deterministically.
-- A repeated delete of the same primary key remains harmless.
+- Repeated `HSET` to the same user Hash and item field replaces the value
+  deterministically.
+- Repeated `HDEL` for the same field remains harmless.
 
-This makes the Cassandra projection logically idempotent, but Cassandra is not
-part of a distributed transaction with Flink.
+This makes the Redis projection logically idempotent, but Redis is not part of
+a distributed transaction with Flink.
 
 ## 12. Checkpoint and TaskManager failure
 
@@ -312,4 +314,3 @@ For any fixture row, write down:
 
 If every step is explicit, the event’s final outputs should be predictable
 without running the system.
-

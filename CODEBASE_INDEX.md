@@ -4,7 +4,7 @@
 raw Taobao rows -> Python -> Kafka/Avro -> one Java Flink job -> ClickHouse
 ```
 
-Optional release profiles add Cassandra serving or Grafana. Deprecated
+Optional release profiles add Valkey/Redis serving or Grafana. Deprecated
 PostgreSQL/Debezium behavior-rule artifacts remain isolated for a later
 replacement migration.
 
@@ -14,7 +14,7 @@ replacement migration.
 | Java Flink job and tests | `flink-jobs/taobao-stream-job/` |
 | Avro contracts | `schemas/` |
 | ClickHouse DDL and queries | `infra/clickhouse/` |
-| Optional Cassandra | `infra/cassandra/` |
+| Optional Valkey/Redis | `infra/docker-compose.yml`, Java `sink/Redis*` classes |
 | Deprecated legacy CDC | `infra/postgres/`, `infra/debezium/`, `infra/kafka/` |
 | Compose and Terraform | `infra/docker-compose.yml`, `infra/terraform/` |
 | Verification and experiments | `scripts/` |

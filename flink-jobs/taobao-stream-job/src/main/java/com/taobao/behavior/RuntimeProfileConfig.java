@@ -1,6 +1,6 @@
 package com.taobao.behavior;
 
-import com.taobao.behavior.sink.CassandraConfig;
+import com.taobao.behavior.sink.RedisConfig;
 import java.util.Locale;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,7 +37,7 @@ final class RuntimeProfileConfig {
         return "checks".equals(runtimeProfile);
     }
 
-    boolean isCassandraEnabled() {
+    boolean isRedisEnabled() {
         return "serving".equals(runtimeProfile);
     }
 
@@ -58,11 +58,11 @@ final class RuntimeProfileConfig {
         return value == null || value.isBlank() ? defaultValue : value;
     }
 
-    CassandraConfig cassandraConfig() {
-        if (!isCassandraEnabled()) {
-            throw new IllegalStateException("Cassandra is not opened by the checks profile");
+    RedisConfig redisConfig() {
+        if (!isRedisEnabled()) {
+            throw new IllegalStateException("Redis is opened only by the serving profile");
         }
-        return CassandraConfig.fromEnvironment(environment);
+        return RedisConfig.fromEnvironment(environment);
     }
 
     Properties kafkaProperties() {
@@ -118,8 +118,8 @@ final class RuntimeProfileConfig {
     }
 
     private void validateProfile() {
-        if (isCassandraEnabled()) {
-            CassandraConfig.fromEnvironment(environment);
+        if (isRedisEnabled()) {
+            RedisConfig.fromEnvironment(environment);
         }
         if (isCdcEnabled()) {
             required("RULES_KAFKA_TOPIC");

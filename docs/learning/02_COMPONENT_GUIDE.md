@@ -19,7 +19,7 @@ leaves, what state it owns, how it fails, and how it is verified.
 | ClickHouse sinks | Raw, metric, quality records | Physical table writes | External at-least-once storage | Active core |
 | ClickHouse canonical views | Replacement tables | Logical canonical results | Query-time `FINAL` collapse | Active core |
 | Active-cart projector | Accepted unique user-keyed event | Upsert/delete mutation | Per-user item `MapState` | Optional serving |
-| Cassandra sink | Cart mutation | `user_active_cart` row change | External current state | Optional serving |
+| Redis sink | Cart mutation | Per-user Hash field change | External bounded hot state | Optional serving |
 | Grafana | ClickHouse query results | Dashboards | Dashboard configuration | Optional observability |
 | Legacy rule control plane | PostgreSQL changes | Rule Avro stream | PostgreSQL and compacted topic | Deprecated |
 | Legacy alert processor | On-time event plus broadcast rule | Behavior alert | Broadcast state, pending carts, timers | Deprecated |
@@ -185,7 +185,7 @@ TTL behavior:
 - default to seven days.
 
 A duplicate emits a quality event with
-`DUPLICATE_WITHIN_RETENTION`. It never reaches raw, metrics, Cassandra, or the
+`DUPLICATE_WITHIN_RETENTION`. It never reaches raw, metrics, Redis, or the
 deprecated alert branch.
 
 ## 9. Watermarks and lateness
@@ -279,17 +279,17 @@ Canonical views use `FINAL`. Stable verification excludes:
 This separation is crucial: lineage and transport timing may differ even when
 the business result is identical.
 
-## 13. Optional Cassandra serving
+## 13. Optional Valkey/Redis serving
 
 Files:
 
 - `processing/ActiveCartProjector.java`
 - cart model classes under `model/`
-- `sink/CassandraConfig.java`
-- `CassandraSessionFactory.java`
-- `CassandraActiveCartSink.java`
+- `sink/RedisConfig.java`
+- `RedisClientFactory.java`
+- `RedisCartCodec.java`
+- `RedisActiveCartSink.java`
 - `ActiveCartLookupCli.java`
-- `infra/cassandra/*.cql`
 
 The stream is keyed by user ID. `MapState<item_id, CartItemState>` remembers
 the latest cart/buy ordering for that user and item.
@@ -298,21 +298,22 @@ Ordering is `(event_time_ms, source_sequence)`. An older or equal transition is
 ignored. A new `cart` creates or updates the active row; a `buy` records
 inactive state and emits a delete.
 
-The sink opens one CQL session per sink instance, prepares insert and delete
-statements once, executes synchronously, and closes the session. Keyspace and
-table names are validated before interpolation; row values use bind markers.
+The sink opens one pooled Redis-compatible client per sink instance, verifies
+it with `PING`, executes synchronous `HSET` or `HDEL`, refreshes the required
+cart TTL, and closes the client. Repeated writes converge for the same
+user/item field.
 
-Local mode uses hosts, port, datacenter, and optional credentials. Astra mode
-uses a Secure Connect Bundle and application token. Both modes share the same
-projector and sink business logic.
+Local and managed endpoints share host, port, optional ACL credentials, and
+optional TLS configuration. Cluster/Sentinel discovery, pipelining, and async
+I/O are intentionally deferred until a measured requirement exists.
 
 The lookup CLI supports only:
 
 ```text
-SELECT ... FROM user_active_cart WHERE user_id = ?
+HGETALL taobao:active_cart:{user_id}
 ```
 
-There is intentionally no arbitrary SQL/CQL interface.
+There is intentionally no arbitrary Redis command interface.
 
 ## 14. Optional observability
 
@@ -357,11 +358,10 @@ Terraform defines:
   IP, and EC2 demo host;
 - optional Confluent environment, Kafka cluster, topics, identity, ACLs, and
   schemas;
-- optional Astra database/keyspace.
+- operator-provided managed Redis endpoint; Terraform does not provision it.
 
-Defaults keep Confluent and Astra resource creation disabled. Terraform
-validation is not deployment evidence. Cloud creation or teardown requires
-explicit approval.
+Defaults keep Confluent resource creation disabled. Terraform validation is not
+deployment evidence. Cloud creation or teardown requires explicit approval.
 
 The Terraform Confluent file still declares legacy rule and Connect resources.
 Treat those declarations as deprecated artifacts, not an instruction to deploy
@@ -382,4 +382,3 @@ results for uninterrupted-versus-recovered comparison.
 Verification scripts do not make unavailable services “verified.” They become
 live evidence only when run successfully against a real bounded environment
 and the evidence is retained.
-

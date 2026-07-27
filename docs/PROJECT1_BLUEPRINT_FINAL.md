@@ -40,11 +40,11 @@ rejections. Semantically invalid decoded events are classified by Flink.
 | --- | --- |
 | `checks` | Tests, compilation, schema checks, Compose rendering, Terraform validation; no connections |
 | `core` | Kafka, Schema Registry, one Flink job, ClickHouse |
-| `serving` | Core plus optional Cassandra active-cart projection |
+| `serving` | Core plus optional Valkey/Redis active-cart projection |
 | `cdc` | Deprecated legacy PostgreSQL/Debezium behavior-rule compatibility only |
 | `observability` | Core plus Grafana backed by ClickHouse |
 
-All runtime profiles reuse the same Java job. Cassandra, Astra, PostgreSQL,
+All runtime profiles reuse the same Java job. Redis, PostgreSQL,
 Debezium, and Grafana settings are not read by `core`.
 
 ## Event identity and lineage
@@ -125,18 +125,23 @@ ClickHouse: at-least-once writes plus effectively-once canonical reads
 overall platform: not transactional global exactly once
 ```
 
-## Optional Cassandra boundary
+## Optional Valkey/Redis boundary
 
-The serving profile maintains only:
+The serving profile maintains one bounded Redis Hash per user:
 
-```sql
-user_active_cart PRIMARY KEY ((user_id), item_id)
+```text
+key:   taobao:active_cart:{user_id}
+field: item_id
+value: category_id|added_at_ms|last_updated_at_ms
 ```
 
 `cart` upserts, `buy` deletes, and `pv`/`fav` do nothing. Event-time/source
 ordering prevents a stale cart from recreating an item after a newer buy.
-Repeated primary-key mutations are harmless. Writes remain synchronous and
-prepared; asynchronous throughput work is deferred.
+Repeated `HSET`/`HDEL` mutations are harmless. Every mutation refreshes a
+required bounded cart TTL. Writes remain synchronous; asynchronous and
+pipelined throughput work is deferred until a real benchmark justifies it.
+Local and managed Redis-compatible endpoints share one code path using
+host/port, optional ACL credentials, and optional TLS.
 
 ## Deprecated legacy CDC boundary
 
@@ -164,23 +169,25 @@ PostgreSQL product_catalog
 It will replace rather than coexist with the behavior-rule branch. Product CDC
 Enrichment is **NOT IMPLEMENTED** and **NOT VERIFIED**. This phase creates no
 product table, connector configuration, changelog schema, product state,
-enriched ClickHouse table, or Cassandra product snapshot field.
+enriched ClickHouse table, or Redis product snapshot field.
 
 ## This bounded phase
 
-The one active implementation phase is **core correctness and recovery
-refactor**:
+The one active implementation phase is **Redis serving simplification
+migration**:
 
-1. make Cassandra and CDC optional;
-2. add bounded event-ID deduplication and durable duplicate quality;
-3. remove replay lineage from business keys;
-4. make ClickHouse keys and canonical views replay-independent;
-5. configure checkpoint-consistent recovery and deterministic comparison;
-6. reconcile two replay attempts independently;
-7. align active documentation.
+1. replace optional Cassandra/Astra active-cart serving with Valkey/Redis;
+2. preserve the existing user-keyed cart/buy ordering business logic;
+3. use one bounded TTL Hash per user with idempotent `HSET`/`HDEL`;
+4. keep Redis isolated from `core`;
+5. remove Cassandra/Astra code, dependencies, configuration, infrastructure,
+   scripts, and active documentation;
+6. verify the replacement with credential-independent tests and profile
+   contracts.
 
-No later feature, scale, savepoint-upgrade, or cloud-deployment phase is part of
-this work.
+Async/pipelined sink tuning, Redis Cluster, Sentinel, performance benchmarking,
+product CDC, savepoint upgrades, and cloud deployment are later phases and are
+not part of this work.
 
 ## Release gates
 

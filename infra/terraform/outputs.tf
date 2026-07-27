@@ -17,13 +17,3 @@ output "confluent_kafka_bootstrap_endpoint" {
   description = "Confluent Cloud bootstrap endpoint when resources are enabled."
   value       = var.enable_confluent_resources ? confluent_kafka_cluster.basic[0].bootstrap_endpoint : null
 }
-
-output "astra_database_id" {
-  description = "Astra database ID when Astra resources are enabled."
-  value       = var.enable_astra_resources ? module.astra[0].database_id : null
-}
-
-output "astra_keyspace" {
-  description = "Astra initial keyspace when Astra resources are enabled."
-  value       = var.enable_astra_resources ? module.astra[0].keyspace : null
-}

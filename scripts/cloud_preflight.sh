@@ -38,30 +38,10 @@ check_tcp "Kafka" "$KAFKA_HOST" "$KAFKA_PORT"
 check_url "Schema Registry" "${SCHEMA_REGISTRY_URL%/}/subjects"
 check_url "ClickHouse" "$CLICKHOUSE_ENDPOINT"
 if [ "$runtime_profile" = serving ]; then
-  require CASSANDRA_MODE
-  require CASSANDRA_KEYSPACE
-  require CASSANDRA_TABLE
-  case "$CASSANDRA_MODE" in
-  local)
-    require CASSANDRA_HOSTS
-    require CASSANDRA_DATACENTER
-    first_host="${CASSANDRA_HOSTS%%,*}"
-    check_tcp "Apache Cassandra" "$first_host" "${CASSANDRA_PORT:-9042}"
-    ;;
-  astra)
-    require ASTRA_DB_SECURE_BUNDLE_PATH
-    require ASTRA_DB_APPLICATION_TOKEN
-    if [ ! -f "$ASTRA_DB_SECURE_BUNDLE_PATH" ]; then
-      echo "ERROR: ASTRA_DB_SECURE_BUNDLE_PATH must reference a readable file" >&2
-      exit 2
-    fi
-    echo "Apache Cassandra/Astra: runtime secret configuration present"
-    ;;
-  *)
-    echo "ERROR: CASSANDRA_MODE must be local or astra" >&2
-    exit 2
-    ;;
-  esac
+  require REDIS_HOST
+  require REDIS_PORT
+  require REDIS_CART_TTL_SECONDS
+  check_tcp "Redis" "$REDIS_HOST" "$REDIS_PORT"
 fi
 
 if [ -n "${GRAFANA_ENDPOINT:-}" ]; then

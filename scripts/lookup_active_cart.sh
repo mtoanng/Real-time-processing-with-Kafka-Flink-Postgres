@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read active cart items for exactly one user through the native CQL driver.
+# Read one user's active-cart Hash through the Redis-compatible client.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

@@ -24,7 +24,7 @@ echo "  Kafka: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 echo "  Topic: ${KAFKA_TOPIC:-user-behavior-events}"
 echo "  Schema Registry: ${SCHEMA_REGISTRY_URL:-http://localhost:8081/apis/ccompat/v7}"
 echo "  ClickHouse: ${CLICKHOUSE_ENDPOINT:-https://localhost:8443}"
-echo "  Cassandra mode: ${CASSANDRA_MODE:-disabled}"
+echo "  Redis: ${REDIS_HOST:-disabled}:${REDIS_PORT:-6379}"
 if [ "${RUNTIME_PROFILE:-core}" = "cdc" ]; then
   echo "  Deprecated legacy rules topic: ${RULES_KAFKA_TOPIC:-behavior-rules}"
 fi

@@ -105,7 +105,7 @@ Reason:
 ```text
 Taobao -> Python replay -> Kafka/Schema Registry -> one Java Flink job
         -> ClickHouse
-        -> optional Apache Cassandra active-cart serving profile
+        -> optional Valkey/Redis active-cart serving profile
         -> deprecated behavior-rule CDC artifacts isolated from core
 ```
 
@@ -114,9 +114,9 @@ Rules:
 - Python owns dataset preparation and replay.
 - Java owns the Flink DataStream core.
 - ClickHouse stores analytical history and rollups.
-- Apache Cassandra stores bounded per-user active-cart state only and is
-  optional under `serving`; local Cassandra and DataStax Astra DB Serverless
-  share one business-logic path.
+- Valkey/Redis stores bounded per-user active-cart hot state only and is
+  optional under `serving`; local and managed endpoints share one
+  business-logic path.
 - The existing PostgreSQL/Debezium `behavior_rules` branch is deprecated
   legacy code, not the target CDC architecture and not part of the core
   release target.
@@ -125,7 +125,8 @@ Rules:
   is not implemented or verified in the current phase.
 - Confluent Cloud provides Kafka and Schema Registry for final cloud E2E; do not
   add Amazon MSK or self-hosted Kafka to the final topology.
-- Do not add Spark, Airflow, MongoDB, Redis, Elasticsearch, Kubernetes, ML, recommendation, arbitrary SQL APIs, or another serving database.
+- Do not add Spark, Airflow, MongoDB, Cassandra, Elasticsearch, Kubernetes, ML,
+  recommendation, arbitrary SQL APIs, or another serving database.
 - Do not convert the Java Flink job to PyFlink.
 
 ## Resource limits
@@ -147,7 +148,8 @@ For each phase:
 3. require the user to explain or manually verify that core decision;
 4. end with three teach-back questions and one controlled failure experiment.
 
-Core decisions include event grain, Kafka key, watermark, state/timer semantics, ClickHouse ordering, Cassandra partitioning, and checkpoint recovery.
+Core decisions include event grain, Kafka key, watermark, state/timer semantics,
+ClickHouse ordering, Redis key/TTL design, and checkpoint recovery.
 
 Do not block all implementation waiting for the user; instead clearly mark the single student learning task for the phase.
 
@@ -174,7 +176,7 @@ Typical checks:
 - Python tests for fixture/replay code;
 - Maven package and Java tests;
 - Avro compatibility;
-- ClickHouse/Cassandra contract tests where available;
+- ClickHouse/Redis contract tests where available;
 - fixture end-to-end smoke test;
 - Terraform `fmt -check` and `validate` when IaC exists.
 

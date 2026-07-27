@@ -5,7 +5,7 @@ does not run a cloud deployment, so no success evidence is claimed here.
 
 Use `scripts/collect_cloud_evidence.sh` after an approved run. Expected evidence
 includes run metadata, Compose status, produced/valid/invalid/late reconciliation,
-deduplicated ClickHouse raw and rollup checks, Cassandra active-cart lookup,
+deduplicated ClickHouse raw and rollup checks, Redis active-cart lookup,
 optional checkpoint/rule-update logs, Grafana configuration, and teardown
 verification. S3 is not an event sink.
 

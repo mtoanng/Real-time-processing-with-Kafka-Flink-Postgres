@@ -1,34 +1,54 @@
 package com.taobao.behavior;
 
-import com.datastax.oss.driver.api.core.CqlSession;
-import com.datastax.oss.driver.api.core.cql.PreparedStatement;
-import com.datastax.oss.driver.api.core.cql.Row;
-import com.taobao.behavior.sink.CassandraConfig;
-import com.taobao.behavior.sink.CassandraSessionFactory;
+import com.taobao.behavior.sink.RedisCartCodec;
+import com.taobao.behavior.sink.RedisConfig;
+import java.util.Comparator;
+import java.util.Map;
+import redis.clients.jedis.DefaultJedisClientConfig;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.JedisPooled;
 
 public final class ActiveCartLookupCli {
     private ActiveCartLookupCli() {}
 
     public static void main(String[] args) {
         long userId = parseUserId(args);
-        CassandraConfig config = CassandraConfig.fromEnvironment(System.getenv());
-        try (CqlSession session = new CassandraSessionFactory().open(config)) {
-            PreparedStatement query = session.prepare(selectCql(config.keyspace(), config.table()));
-            boolean found = false;
-            for (Row row : session.execute(query.bind(userId))) {
-                found = true;
-                System.out.printf(
-                        "user_id=%d item_id=%d category_id=%d added_at=%s last_updated_at=%s%n",
-                        row.getLong("user_id"),
-                        row.getLong("item_id"),
-                        row.getLong("category_id"),
-                        row.getInstant("added_at"),
-                        row.getInstant("last_updated_at"));
-            }
-            if (!found) {
-                System.out.println("NOT FOUND user_id=" + userId);
-            }
+        RedisConfig config = RedisConfig.fromEnvironment(System.getenv());
+        DefaultJedisClientConfig.Builder clientConfig =
+                DefaultJedisClientConfig.builder()
+                        .ssl(config.tls())
+                        .connectionTimeoutMillis((int) config.connectTimeout().toMillis())
+                        .socketTimeoutMillis((int) config.socketTimeout().toMillis());
+        if (config.username() != null) {
+            clientConfig.user(config.username());
         }
+        if (config.password() != null) {
+            clientConfig.password(config.password());
+        }
+        try (JedisPooled redis =
+                new JedisPooled(
+                        new HostAndPort(config.host(), config.port()), clientConfig.build())) {
+            Map<String, String> items = redis.hgetAll(config.keyForUser(userId));
+            if (items.isEmpty()) {
+                System.out.println("NOT FOUND user_id=" + userId);
+                return;
+            }
+            items.entrySet().stream()
+                    .sorted(Comparator.comparingLong(entry -> Long.parseLong(entry.getKey())))
+                    .forEach(entry -> printItem(userId, entry.getKey(), entry.getValue()));
+        }
+    }
+
+    static void printItem(long userId, String itemField, String encodedValue) {
+        long itemId = Long.parseLong(itemField);
+        RedisCartCodec.DecodedCartItem item = RedisCartCodec.decode(encodedValue);
+        System.out.printf(
+                "user_id=%d item_id=%d category_id=%d added_at_ms=%d last_updated_at_ms=%d%n",
+                userId,
+                itemId,
+                item.categoryId(),
+                item.addedAtMs(),
+                item.lastUpdatedAtMs());
     }
 
     static long parseUserId(String[] args) {
@@ -40,10 +60,5 @@ public final class ActiveCartLookupCli {
             throw new IllegalArgumentException("user ID must be positive");
         }
         return userId;
-    }
-
-    static String selectCql(String keyspace, String table) {
-        return "SELECT user_id, item_id, category_id, added_at, last_updated_at FROM "
-                + keyspace + "." + table + " WHERE user_id = ?";
     }
 }

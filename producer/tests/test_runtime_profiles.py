@@ -19,18 +19,20 @@ class RuntimeProfileFilesTests(unittest.TestCase):
         ):
             self.assertIn(f"  {service}:", self.compose)
         self.assertIn('profiles: ["core", "serving", "cdc", "observability"]', self.compose)
-        cassandra_section = self.compose.split("  cassandra:", 1)[1].split("  postgres:", 1)[0]
-        self.assertIn('profiles: ["serving"]', cassandra_section)
-        self.assertNotIn('"core"', cassandra_section)
+        redis_section = self.compose.split("  redis:", 1)[1].split("  postgres:", 1)[0]
+        self.assertIn('profiles: ["serving"]', redis_section)
+        self.assertNotIn('"core"', redis_section)
 
     def test_optional_profiles_isolate_their_services(self) -> None:
         self.assertIn('profiles: ["serving"]', self.compose)
         self.assertGreaterEqual(self.compose.count('profiles: ["cdc"]'), 2)
         self.assertIn('profiles: ["observability"]', self.compose)
 
-    def test_environment_keeps_cassandra_optional_and_recovery_explicit(self) -> None:
+    def test_environment_keeps_redis_optional_and_recovery_explicit(self) -> None:
         self.assertIn("RUNTIME_PROFILE=core", self.environment)
-        self.assertIn("CASSANDRA_MODE=\n", self.environment)
+        self.assertIn("REDIS_HOST=localhost", self.environment)
+        self.assertNotIn("CASSANDRA_", self.environment)
+        self.assertNotIn("ASTRA_", self.environment)
         self.assertIn("FLINK_CHECKPOINTING_ENABLED=true", self.environment)
         self.assertIn("FLINK_CHECKPOINT_DIR=file:///var/lib/flink/checkpoints", self.environment)
         self.assertIn("FLINK_RESTART_ATTEMPTS=3", self.environment)
@@ -38,6 +40,9 @@ class RuntimeProfileFilesTests(unittest.TestCase):
 
     def test_active_environment_has_no_s3_event_archive_variable(self) -> None:
         self.assertNotIn("S3_ARCHIVE_URI", self.environment)
+
+    def test_active_compose_has_no_cassandra_service(self) -> None:
+        self.assertNotIn("  cassandra:", self.compose.lower())
 
 
 if __name__ == "__main__":

@@ -53,12 +53,12 @@ IMPLEMENTED** and has no run command in this runbook.
 
 ## Serving
 
-Set `RUNTIME_PROFILE=serving` and configure either local contact points or an
-Astra Secure Connect Bundle/token. Then:
+Set `RUNTIME_PROFILE=serving` and configure a local or managed Redis-compatible
+endpoint with `REDIS_HOST`, `REDIS_PORT`, optional ACL credentials/TLS, key
+prefix, and cart TTL. Then:
 
 ```bash
 bash scripts/run.sh
-bash scripts/apply_cassandra_schema.sh
 FLINK_DETACHED=true bash scripts/run_flink.sh
 bash scripts/run_replay_identity_experiment.sh
 ```
@@ -85,4 +85,4 @@ bash scripts/stop.sh
 ```
 
 Only use `bash scripts/stop.sh --volumes` when local ClickHouse, checkpoint,
-Cassandra, and PostgreSQL data may be discarded.
+Redis, and PostgreSQL data may be discarded.

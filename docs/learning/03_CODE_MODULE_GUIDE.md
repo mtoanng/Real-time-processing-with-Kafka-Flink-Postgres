@@ -10,7 +10,7 @@ sinks, tests, and operations.
 producer/                         Python source preparation and replay
 flink-jobs/taobao-stream-job/     One Java Flink job
 schemas/                          Avro source contracts
-infra/                            SQL, CQL, Compose, Grafana, Terraform, legacy CDC
+infra/                            SQL, Compose, Grafana, Terraform, legacy CDC
 scripts/                          Setup, submission, verification, recovery, teardown
 tests/fixtures/                   Deterministic bounded CSV fixture
 docs/                             Active contracts, operations, learning, evidence
@@ -179,7 +179,7 @@ TaobaoStreamJob.main
   -> timestamps/watermarks -> LateEventRouter
   -> keyBy(ItemCategoryKey) -> one-minute aggregate -> ClickHouse metric sink
   -> union invalid/duplicate/late quality -> ClickHouse quality sink
-  -> optional keyBy(user_id) -> ActiveCartProjector -> Cassandra sink
+  -> optional keyBy(user_id) -> ActiveCartProjector -> Redis sink
   -> deprecated rules source/broadcast/timers -> alert sink
 ```
 
@@ -205,10 +205,10 @@ and late routing.
 ### `RuntimeProfileConfig.java`
 
 Package-private configuration boundary for supported profile names, optional
-branch flags, default values, Cassandra validation, Kafka security properties,
+branch flags, default values, Redis validation, Kafka security properties,
 and Schema Registry properties.
 
-`isCassandraEnabled()` is true only for `serving`.
+`isRedisEnabled()` is true only for `serving`.
 `isCdcEnabled()` is true only for `cdc`.
 `observability` does not add a Java branch.
 
@@ -347,36 +347,43 @@ Returns both the next Flink state and an optional external mutation.
 
 `processElement()` stores the next state and emits the optional mutation.
 
-## 7. Cassandra sink package
+## 7. Valkey/Redis sink package
 
-### `CassandraConfig`
+### `RedisConfig`
 
-Validates `local` or `astra` mode, lowercase CQL identifiers, required
-`user_active_cart` table name, timeouts, local contact points/datacenter, or
-Astra bundle/token. Secret values are not included in failure messages.
+Validates host, port, optional TLS/ACL credentials, key prefix, required cart
+TTL, and connection/socket timeouts. `keyForUser()` creates a cluster-friendly
+`taobao:active_cart:{user_id}` key. Secret values are not included in failure
+messages.
 
-### `CassandraSessionFactory`
+### `RedisClientFactory` and `RedisCommandsClient`
 
-Builds one DataStax Java Driver session. Both modes apply connection/request
-timeouts and select the keyspace. Astra uses cloud bundle and token; local uses
-contact points, datacenter, and optional credentials.
+Build one pooled Jedis connection facade. Local and managed Redis-compatible
+endpoints share this path. The small internal interface keeps sink behavior
+testable without a live service.
 
-### `CassandraActiveCartSink`
+### `RedisCartCodec`
 
-Legacy Flink `RichSinkFunction` used only in `serving`.
+Maps item ID to the Hash field and encodes the bounded value as
+`category_id|added_at_ms|last_updated_at_ms`. Decode validates field count,
+numeric types, and ranges.
 
-`open()` creates a session and prepares insert/delete statements.
-`invoke()` validates the mutation and synchronously executes the bound
-statement.
-`close()` closes the session and clears transient fields.
+### `RedisActiveCartSink`
+
+Flink `RichSinkFunction` used only in `serving`.
+
+`open()` creates the client and verifies `PING`.
+`invoke()` validates the mutation, executes `HSET` or `HDEL`, and refreshes the
+required TTL.
+`close()` closes the client and clears the transient field.
 
 Because writes are synchronous, this is understandable and bounded but not a
 throughput-optimized implementation.
 
 ### `ActiveCartLookupCli`
 
-Parses exactly `--user-id <positive-id>`, prepares a fixed partition query, and
-prints returned rows or `NOT FOUND`.
+Parses exactly `--user-id <positive-id>`, runs `HGETALL` for the user key,
+sorts item fields numerically, and prints rows or `NOT FOUND`.
 
 ## 8. ClickHouse sink package
 
@@ -439,7 +446,7 @@ extending it would violate the current architecture.
 Schema evolution is tested through Avro serialization and reader/writer
 resolution. A live registry compatibility check remains separate.
 
-## 11. SQL and CQL modules
+## 11. SQL and storage-contract modules
 
 ### `infra/clickhouse/schema.sql`
 
@@ -452,19 +459,6 @@ it deliberately does not migrate incompatible legacy tables.
 Human-readable canonical counts, metrics, quality, duplicate lineage, and
 physical-versus-canonical diagnostics.
 
-### `infra/cassandra/local-keyspace.cql`
-
-Creates a single-node development keyspace. It must not be used as the managed
-replication design.
-
-### `infra/cassandra/schema.cql`
-
-Creates only `user_active_cart`. Application code does not create keyspaces.
-
-### `infra/cassandra/verify.cql`
-
-Fixed operator verification query for active cart.
-
 ### Deprecated SQL/configuration
 
 `infra/postgres/schema.sql`, `infra/debezium/`, and `infra/kafka/` implement or
@@ -474,7 +468,7 @@ describe the old behavior-rule branch only.
 
 `infra/docker-compose.yml` declares named profiles and services. YAML anchors
 share Flink environment settings. Named volumes retain ClickHouse, checkpoints,
-Cassandra, and PostgreSQL data.
+Redis, and PostgreSQL data.
 
 The Grafana provisioning directory contains:
 
@@ -489,14 +483,12 @@ Grafana does not modify the Flink job.
 | Path | Responsibility |
 | --- | --- |
 | `versions.tf` | Terraform/provider versions and provider configuration |
-| `variables.tf` | AWS, artifact, runtime profile, Confluent, and Astra inputs |
+| `variables.tf` | AWS, artifact, runtime profile, and Confluent inputs |
 | `network.tf` | Temporary VPC, subnet, route, SSH-only ingress, EIP |
 | `ec2.tf` | Disposable host and user-data template |
 | `cloud_user_data.sh` | Install Docker/Java/Python/Flink, fetch checked artifacts, write operator environment and start/stop wrappers |
 | `confluent.tf` | Optional Kafka environment/cluster, identities, topics, ACLs, schemas; includes deprecated CDC resources |
-| `main.tf` | Optional Astra module call |
-| `modules/astra/` | Optional non-vector Astra database and initial keyspace |
-| `outputs.tf` | Host, network, Kafka endpoint, and Astra identifiers |
+| `outputs.tf` | Host, network, and Kafka endpoint identifiers |
 | `terraform.tfvars.example` | Non-secret input example |
 
 The bootstrap never embeds runtime credentials. Operators add them later to a
@@ -542,8 +534,7 @@ No Terraform apply or destroy is authorized by documentation work.
 
 | Script | Responsibility |
 | --- | --- |
-| `apply_cassandra_schema.sh` | Apply local or Astra cart table schema |
-| `lookup_active_cart.sh` | Invoke fixed Java lookup for one user |
+| `lookup_active_cart.sh` | Invoke the fixed Redis Hash lookup for one user |
 
 ### Cloud and release evidence
 
@@ -589,9 +580,8 @@ Java tests cover:
 - item/category metric aggregation and lineage independence;
 - ClickHouse DDL, delivery, and column mapping;
 - cart ordering/idempotence;
-- Cassandra configuration, CQL, session lifecycle, and input validation;
+- Redis configuration, codec, TTL mutation, client lifecycle, and input validation;
 - deprecated rule version policy.
 
 Use [Tests and experiments](05_TESTS_AND_EXPERIMENTS.md) to distinguish unit,
 contract, static, and live evidence.
-

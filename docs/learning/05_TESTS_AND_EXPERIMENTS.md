@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Pure unit test | One function/class behavior | Real connector or service behavior |
 | Flink harness/state test | Operator output, TTL, state snapshot/restore | Multi-process cluster recovery |
-| Contract/static test | Code, schema, DDL/CQL, Compose, or Terraform agreement | Live service compatibility |
+| Contract/static test | Code, schema, DDL/Redis key and TTL, Compose, or Terraform agreement | Live service compatibility |
 | Package build | Java compiles and shaded JAR is created | JAR executes successfully against services |
 | Deterministic independent computation | Expected bounded business results | Actual pipeline produced them |
 | Live bounded integration | Real services process deterministic input | Scale, performance, or production readiness |
@@ -14,9 +14,10 @@
 
 ## 2. Credential-independent checks
 
-Predicted result before running: the current documentation-only change should
-not alter code behavior; Python and Java tests should remain unchanged, and
-documentation path/link checks should pass.
+Predicted result before running: the Redis migration should keep the core tests
+green, replace Cassandra serving tests with Redis key/TTL/sink tests, render
+all profiles without starting services, and create a shaded JAR containing
+Jedis but no Cassandra driver.
 
 The standard checks are:
 
@@ -107,17 +108,18 @@ Together they enforce `(window_start, item_id, source_category_id)`, behavior
 counts, distinct users, lineage independence, and matching ClickHouse order
 keys.
 
-### Cassandra partitioning and ordering
+### Redis key, TTL, and ordering
 
 Read:
 
 - `ActiveCartProjectorTest.java`
-- `CassandraCqlContractTest.java`
-- `CassandraActiveCartSinkTest.java`
+- `RedisConfigTest.java`
+- `RedisCartCodecTest.java`
+- `RedisActiveCartSinkTest.java`
 - `ActiveCartLookupCliTest.java`
 
-These enforce the user partition, item clustering key, prepared statements,
-cart/buy transitions, stale rejection, fixed lookup shape, and session
+These enforce the per-user Hash key, item field/value encoding, required TTL,
+cart/buy transitions, stale rejection, fixed lookup shape, and client
 lifecycle.
 
 ### Recovery
@@ -210,22 +212,28 @@ would test a different lifecycle.
 
 ## 7. Controlled failure experiment for this learning phase
 
-Safe local experiment: demonstrate producer contract rejection without
-services.
+Safe local experiment: demonstrate why the Redis TTL is a required boundedness
+contract without starting Redis.
 
-Create a temporary CSV outside the repository or under an ignored artifact
-directory with one row containing an unsupported behavior such as `click`.
-Run the JSONL replay command and direct invalid output to another temporary
-file.
+After `mvn -B clean package`, start JShell with the compiled classes:
 
-Predict before running:
+```bash
+jshell --class-path flink-jobs/taobao-stream-job/target/classes
+```
 
-- source rows: 1;
-- emitted events: 0;
-- invalid rows: 1;
-- Kafka/Flink/ClickHouse are not involved.
+Then enter:
 
-Do not change the committed fixture for this experiment.
+```java
+import com.taobao.behavior.sink.RedisConfig;
+import java.util.Map;
+RedisConfig.fromEnvironment(
+    Map.of("REDIS_HOST", "redis", "REDIS_CART_TTL_SECONDS", "0"));
+```
+
+Predict before running: configuration construction throws
+`IllegalArgumentException`; no network connection is attempted. Repeat with
+`"60"` and predict that construction succeeds because 60 seconds is the
+minimum accepted TTL. Exit JShell without changing repository files.
 
 ## 8. How to read a test effectively
 
@@ -248,9 +256,9 @@ Currently verified by recorded credential-independent evidence:
 
 - Python tests and formatting/lint contracts;
 - Java tests and package build;
-- schema and DDL/CQL contracts;
+- schema, DDL, and Redis key/TTL contracts;
 - Compose profile rendering;
-- Terraform formatting and validation;
+- Terraform formatting;
 - deterministic expected reconciliation.
 
 Still **NOT VERIFIED** without new real evidence:
@@ -259,7 +267,8 @@ Still **NOT VERIFIED** without new real evidence:
 - execution of the shaded JAR on a live Flink cluster;
 - completed-checkpoint recovery across a real TaskManager failure;
 - ClickHouse physical merge/canonical behavior on a live server;
-- Cassandra or Astra connectivity and recovered serving state;
+- Redis connectivity and recovered serving state;
+- Terraform validation after provider initialization;
 - deprecated CDC runtime;
 - cloud deployment and teardown;
 - performance, latency, or throughput.
@@ -274,10 +283,10 @@ Still **NOT VERIFIED** without new real evidence:
    exactly-once results in this repository?
 4. What is the maximum duration of the deduplication guarantee, and what
    happens after it?
-5. Why does the Cassandra primary key start with `((user_id))`?
+5. Why does the Redis design use one Hash key per `user_id` with a required
+   TTL?
 6. Which fields must be excluded when comparing two replay attempts?
 7. What is the difference between a producer rejection and an `INVALID`
    quality event?
 8. Why must future product catalog data not replace `source_category_id` in
    core metric identity?
-

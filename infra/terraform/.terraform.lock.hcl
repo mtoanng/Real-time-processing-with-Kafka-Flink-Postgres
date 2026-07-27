@@ -25,28 +25,6 @@ provider "registry.terraform.io/confluentinc/confluent" {
   ]
 }
 
-provider "registry.terraform.io/datastax/astra" {
-  version     = "2.4.2"
-  constraints = "2.4.2"
-  hashes = [
-    "h1:SZnqXCgGsTslr5LOTgxOhs2QwnNts2C64hDs7Cap220=",
-    "zh:1603eee348942e4b9b92be27be46e4f840d88b94ca41ba067c892cb5c5913365",
-    "zh:39f4c538d39d000a5cbc6961012573dc49f06e4cc52783c83c34ad18bb75328b",
-    "zh:5011ec2ca60dddce093d5c9535647deed3cfde1b10a4185ec07cc1df6641f18c",
-    "zh:594505d4ac75d94427c1e33d7ffcbe022a06e0c98524179f4d1bd3a6179ce4e8",
-    "zh:5c33ff082c9ccc23939dd76f6c1a5cd26fc7ddeeaa9e738ac150414326e725ed",
-    "zh:72682c12bbe0f9a5b965af026d7ad23d92333368e5d2390550c684c12de82760",
-    "zh:731f5543c514539ad9cdc410917901ae7e9827c47ac65d6573b813a06279fe7b",
-    "zh:b37b5815eea00969f0de27105a7df5b3fd439f06fd6bb3bfc1457c7f94287d74",
-    "zh:c887bdcd83072725e70a177ae6ae6240a0b541ee82dd77bb01436c80ac142f54",
-    "zh:ccabb8961a342833e1155a8ddc73102a8ed7744aaf03ad864c08b98d96b2183b",
-    "zh:d79740f18e4d66636cf31b9abf1c9d1b33bf5d1fda445a7eea03bbe5133c1576",
-    "zh:e9d91c94fa3b758d001de97f2bc2317024bc0e9784884619def0ed6c909fcb74",
-    "zh:f15f8b859e91597c9681d1f62e51ed2e03f54ab985ad9723a9170ad723d9da36",
-    "zh:fd351f3f12cffde7875c1623fdfd78434a3b6986e85a237964683a37c9eb6503",
-  ]
-}
-
 provider "registry.terraform.io/hashicorp/aws" {
   version     = "5.100.0"
   constraints = "~> 5.0"

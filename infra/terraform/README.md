@@ -4,10 +4,9 @@ This directory plans a disposable AWS VPC, public subnet, route, restricted SSH
 security group, Elastic IP, and one EC2 host. The optional Confluent resources
 create a Confluent Cloud environment, Basic Kafka cluster, topics, service account,
 API key, ACL, and Avro schemas. No S3 resource, data sink, backend, secret, MSK,
-managed Flink, Kubernetes, ClickHouse, or Grafana resource is defined. The optional
-`modules/astra` module defines a non-vector DataStax Astra DB Serverless database
-and its initial keyspace when explicitly enabled; it does not download or manage
-Secure Connect Bundles.
+managed Flink, Kubernetes, ClickHouse, Redis, or Grafana resource is defined.
+Managed Redis-compatible serving is an operator-provided endpoint and is not
+provisioned by this Terraform configuration.
 
 ## Host Bootstrap Contract
 
@@ -52,10 +51,6 @@ The checked-in behavior-rule topic/schema resources are deprecated artifacts,
 not the future CDC target. Product Catalog CDC Enrichment is not implemented or
 verified in this Terraform configuration.
 
-Apache Cassandra is optional and is used only by the `serving` profile. The
-`enable_astra_resources=false` default keeps Astra provisioning opt-in. A
-credentialed operator supplies `astra_token` privately, selects the database
-name, keyspace, cloud provider, and region, and may review a plan. The module
-sets `deletion_protection=false` for the explicitly temporary demo, but this
-repository never applies or destroys it. After provisioning, obtain the Secure
-Connect Bundle outside Terraform and place it in an ignored runtime secret path.
+Valkey/Redis is optional and used only by the `serving` profile. Operators
+provide its host, port, TLS, and ACL credentials privately at runtime. This
+repository does not provision or destroy a managed Redis service.

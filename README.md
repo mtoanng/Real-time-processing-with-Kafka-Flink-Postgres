@@ -25,7 +25,7 @@ Taobao fixture / bounded raw source
 Optional, isolated extensions:
 
 ```text
-serving:       core -> Cassandra user_active_cart
+serving:       core -> Valkey/Redis active-cart Hashes
 observability: Grafana -> ClickHouse canonical views
 ```
 
@@ -47,7 +47,7 @@ See [architecture](docs/ARCHITECTURE.md),
 | Kafka / Schema Registry | Transport and Avro contract |
 | Java Flink | Validation, TTL deduplication, event time, metrics, recovery state |
 | ClickHouse | Canonical history, metrics, quality evidence |
-| Cassandra | Optional per-user active-cart lookup only |
+| Valkey/Redis | Optional bounded per-user active-cart hot state |
 | PostgreSQL / Debezium | Deprecated legacy behavior-rule extension; never clickstream source |
 
 `event_id` depends on stable source fields and source sequence.
@@ -85,14 +85,13 @@ bash scripts/run_replay_identity_experiment.sh
 ```
 
 Core requires Kafka, Schema Registry, Flink, and ClickHouse. It does not read
-Cassandra, Astra, PostgreSQL, Debezium, or Grafana settings.
+Redis, PostgreSQL, Debezium, or Grafana settings.
 
 ## Optional profiles
 
 ```bash
-# Core plus local/Astra active-cart projection
+# Core plus local or managed Redis-compatible active-cart projection
 RUNTIME_PROFILE=serving bash scripts/run.sh
-bash scripts/apply_cassandra_schema.sh
 
 # Core plus Grafana backed by canonical ClickHouse views
 RUNTIME_PROFILE=observability bash scripts/run.sh
@@ -140,9 +139,9 @@ timestamps and replay lineage. See [operations](docs/OPERATIONS.md).
 
 ## Verification boundary
 
-Credential-independent tests prove code, state-harness, DDL/CQL, profile, and
+Credential-independent tests prove code, state-harness, DDL/Redis-contract, profile, and
 packaging contracts. They do not prove Kafka permissions, live checkpoints,
-ClickHouse merges, Cassandra connectivity, or recovery on a real cluster.
+ClickHouse merges, Redis connectivity, or recovery on a real cluster.
 
 The platform uses:
 

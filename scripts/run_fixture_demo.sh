@@ -11,9 +11,6 @@ RUN_ID="${REPLAY_RUN_ID:-fixture-$(date -u +%Y%m%dT%H%M%SZ)}"
 export KAFKA_CONSUMER_GROUP="${KAFKA_CONSUMER_GROUP:-taobao-fixture-${RUN_ID}}"
 
 PYTHONPATH=producer/src python scripts/apply_clickhouse_schema.py
-if [ "${RUNTIME_PROFILE:-core}" = serving ]; then
-  bash scripts/apply_cassandra_schema.sh
-fi
 FLINK_DETACHED=true bash scripts/run_flink.sh
 sleep "${FLINK_STARTUP_WAIT_SECONDS:-10}"
 RUN_A_ID="${RUN_ID}-a" RUN_B_ID="${RUN_ID}-b" \

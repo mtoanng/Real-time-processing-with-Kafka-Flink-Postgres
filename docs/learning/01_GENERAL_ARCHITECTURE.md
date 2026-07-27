@@ -56,7 +56,7 @@ raw CSV -> Python replay -> Kafka topic -> Java Flink job
                                   canonical views
 
 optional serving branch:
-accepted unique -> keyed active-cart state -> Cassandra user_active_cart
+accepted unique -> keyed active-cart state -> Valkey/Redis per-user Hash
 ```
 
 There is one behavior-event Kafka topic and one Java Flink application
@@ -72,7 +72,7 @@ create a second clickstream pipeline.
 | Schema Registry | Shared Avro value contract and schema-ID resolution | Event validation beyond encodability |
 | Java Flink DataStream | Semantic validation, keyed State-TTL deduplication, event-time/watermarks, windows, optional stateful projections, checkpoint recovery | Long-term analytical history |
 | ClickHouse | Analytical history, rollups, durable quality evidence, canonical query boundary | Per-event Flink recovery state |
-| Cassandra | Optional bounded current cart keyed by user | Raw history, metrics, arbitrary querying |
+| Valkey/Redis | Optional bounded current cart keyed by user | Raw history, metrics, arbitrary querying |
 | PostgreSQL/Debezium | Deprecated behavior-rule compatibility artifacts only | Taobao clickstream source or current target CDC design |
 | Grafana | Optional visualization of ClickHouse data | Source-of-truth computation |
 
@@ -255,17 +255,21 @@ stream_quality_events_canonical
 
 These views explicitly select from their tables with `FINAL`.
 
-### Cassandra
+### Valkey/Redis
 
-The optional table is:
+The optional serving store uses one bounded Hash per user:
 
-```sql
-PRIMARY KEY ((user_id), item_id)
+```text
+key:   taobao:active_cart:{user_id}
+field: item_id
+value: category_id|added_at_ms|last_updated_at_ms
+TTL:   required and refreshed on every cart mutation
 ```
 
-The partition key supports exactly one query shape: retrieve the current cart
-items for one user. `cart` upserts an item, `buy` deletes it, and `pv`/`fav`
-produce no mutation. Event time and source sequence reject stale transitions.
+The key supports exactly one query shape: retrieve the current cart items for
+one user. `cart` performs `HSET`, `buy` performs `HDEL`, and `pv`/`fav` produce
+no mutation. Event time and source sequence reject stale transitions before the
+sink. A required TTL bounds inactive-user state.
 
 ### Deprecated behavior alerts
 
@@ -279,11 +283,11 @@ compatibility but is not part of the core release target.
 | --- | --- | --- |
 | `checks` | No services and no submitted job | Active local/static verification boundary |
 | `core` | Kafka, Schema Registry, Flink, ClickHouse; raw, metric, quality branches | Active release core |
-| `serving` | Core plus Cassandra and active-cart branch | Optional |
+| `serving` | Core plus Valkey/Redis and active-cart branch | Optional |
 | `observability` | Core plus Grafana; Java topology unchanged | Optional |
 | `cdc` | Core services plus PostgreSQL/Debezium and legacy rule/timer branch | Deprecated compatibility only |
 
-Core must not read Cassandra, Astra, PostgreSQL, Debezium, or Grafana
+Core must not read Redis, PostgreSQL, Debezium, or Grafana
 configuration.
 
 ## 14. Recovery model
@@ -301,7 +305,7 @@ retained externalized checkpoints, a fixed-delay restart strategy, and stable
 operator UIDs.
 
 This means Flink can restore its managed computation and Kafka position
-consistently. ClickHouse and Cassandra do not participate in a Flink
+consistently. ClickHouse and Redis do not participate in a Flink
 transaction. Sink writes can repeat around a failure.
 
 The design converges through:
@@ -309,7 +313,7 @@ The design converges through:
 - stable event and quality identifiers;
 - replay-independent metric keys;
 - replacement-capable ClickHouse tables plus canonical views;
-- deterministic Cassandra primary-key mutations.
+- deterministic Redis Hash `HSET`/`HDEL` mutations.
 
 This is recoverable and effectively once at canonical query boundaries, not
 globally exactly once.
@@ -320,9 +324,10 @@ The complete stack must not run on the constrained laptop. Local tests use the
 fixture without service connections. A disposable remote host is the intended
 integration environment.
 
-Terraform describes an optional temporary AWS host, optional Confluent Cloud
-resources, and optional Astra resources. It has been statically validated, but
-no cloud deployment is claimed. The Confluent definitions still include
+Terraform describes an optional temporary AWS host and optional Confluent
+Cloud resources. It has been statically validated, but no cloud deployment is
+claimed. Managed Redis is an operator-provided endpoint and is not provisioned
+here. The Confluent definitions still include
 deprecated rule and Kafka Connect resources; their presence does not make CDC a
 current release target.
 
@@ -348,6 +353,5 @@ PostgreSQL product_catalog
 ```
 
 The future branch must replace the old rule branch. No product table, product
-schema, connector, Flink product state, enriched ClickHouse table, or Cassandra
+schema, connector, Flink product state, enriched ClickHouse table, or Redis
 product snapshot exists now.
-

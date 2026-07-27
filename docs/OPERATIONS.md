@@ -3,7 +3,7 @@
 ## Configuration
 
 Core requires Kafka, Schema Registry, ClickHouse, and persistent checkpoint
-settings. `serving` additionally requires Cassandra configuration. The
+settings. `serving` additionally requires Redis configuration. The
 checked-in `cdc` configuration belongs to the deprecated behavior-rule
 extension and is not a current release target.
 
@@ -73,7 +73,7 @@ database, and bounded replay.
   stable fields, not ingestion timestamps or replay IDs.
 - Duplicate count is zero in experiment A: keep the same running job/state
   across both replays and finish run B within the dedup retention horizon.
-- Cassandra errors in core: verify `RUNTIME_PROFILE=core`; core must not open a
-  Cassandra session.
+- Redis errors in core: verify `RUNTIME_PROFILE=core`; core must not open a
+  Redis client.
 - Legacy CDC errors in core: verify no rules topic or Connect startup is being
   invoked. Product CDC is not implemented.

@@ -20,23 +20,9 @@ case "$runtime_profile" in
 esac
 
 if [ "$runtime_profile" = "serving" ]; then
-  : "${CASSANDRA_MODE:?CASSANDRA_MODE=local or astra is required for serving}"
-  : "${CASSANDRA_KEYSPACE:?CASSANDRA_KEYSPACE is required for serving}"
-  : "${CASSANDRA_TABLE:?CASSANDRA_TABLE is required for serving}"
-  case "$CASSANDRA_MODE" in
-    local)
-      : "${CASSANDRA_HOSTS:?CASSANDRA_HOSTS is required for local mode}"
-      : "${CASSANDRA_DATACENTER:?CASSANDRA_DATACENTER is required for local mode}"
-      ;;
-    astra)
-      : "${ASTRA_DB_SECURE_BUNDLE_PATH:?ASTRA_DB_SECURE_BUNDLE_PATH is required for astra mode}"
-      : "${ASTRA_DB_APPLICATION_TOKEN:?ASTRA_DB_APPLICATION_TOKEN is required for astra mode}"
-      ;;
-    *)
-      echo "ERROR: CASSANDRA_MODE must be local or astra" >&2
-      exit 2
-      ;;
-  esac
+  : "${REDIS_HOST:?REDIS_HOST is required for serving}"
+  : "${REDIS_PORT:?REDIS_PORT is required for serving}"
+  : "${REDIS_CART_TTL_SECONDS:?REDIS_CART_TTL_SECONDS is required for serving}"
 fi
 
 if [ "$runtime_profile" = "cdc" ]; then
@@ -50,7 +36,7 @@ fi
 case "$runtime_dependencies" in
   local)
     services=(kafka schema-registry clickhouse flink-jobmanager flink-taskmanager)
-    [ "$runtime_profile" = "serving" ] && services+=(cassandra)
+    [ "$runtime_profile" = "serving" ] && services+=(redis)
     [ "$runtime_profile" = "cdc" ] && services+=(postgres debezium-connect)
     [ "$runtime_profile" = "observability" ] && services+=(grafana)
     docker compose -f "$compose_file" --profile "$runtime_profile" up -d "${services[@]}"

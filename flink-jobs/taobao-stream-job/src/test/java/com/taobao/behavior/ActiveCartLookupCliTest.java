@@ -13,8 +13,5 @@ class ActiveCartLookupCliTest {
                 () -> ActiveCartLookupCli.parseUserId(new String[] {"100"}));
         assertThrows(IllegalArgumentException.class,
                 () -> ActiveCartLookupCli.parseUserId(new String[] {"--user-id", "0"}));
-        assertEquals(
-                "SELECT user_id, item_id, category_id, added_at, last_updated_at FROM taobao_streaming.user_active_cart WHERE user_id = ?",
-                ActiveCartLookupCli.selectCql("taobao_streaming", "user_active_cart"));
     }
 }

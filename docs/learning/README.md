@@ -14,7 +14,7 @@ a documentation defect.
 
 Everything under `docs/archive/` describes an earlier implementation. In
 particular, the archived learning package predates replay-independent
-deduplication, optional Cassandra, the current quality-event model, and the
+deduplication, optional Valkey/Redis, the current quality-event model, and the
 recovery contract.
 
 ## Reading order
@@ -40,7 +40,7 @@ raw Taobao CSV rows
 Optional boundaries:
 
 ```text
-serving       -> Cassandra per-user active-cart state
+serving       -> Valkey/Redis bounded per-user active-cart state
 observability -> Grafana queries ClickHouse
 cdc           -> deprecated behavior-rule compatibility branch
 ```
@@ -64,15 +64,16 @@ frontend.
 | Canonical read | A ClickHouse query through a committed `*_canonical` view using `FINAL` |
 | Physical row | A transport write stored in a replacement-capable ClickHouse table before canonical collapse |
 | Core | Kafka, Schema Registry, one Flink job, and ClickHouse |
-| Serving | Core plus optional Cassandra active-cart projection |
+| Serving | Core plus optional Valkey/Redis active-cart projection |
 
 ## Claims boundary
 
 Credential-independent tests verify source parsing, stable identity, Avro
-contracts, Flink operator logic, checkpoint configuration, SQL/CQL contracts,
+contracts, Flink operator logic, checkpoint configuration, SQL and Redis
+key/TTL contracts,
 profile isolation, packaging, and deterministic expected results.
 
-Live Kafka delivery, live Flink recovery, ClickHouse merge behavior, Cassandra
+Live Kafka delivery, live Flink recovery, ClickHouse merge behavior, Redis
 connectivity, cloud deployment, throughput, and end-to-end latency are **NOT
 VERIFIED** unless new evidence is recorded under `docs/evidence/`.
 
@@ -84,4 +85,3 @@ ClickHouse writes: at least once
 ClickHouse canonical reads: effectively once for deterministic logical keys
 whole platform: not transactional global exactly once
 ```
-

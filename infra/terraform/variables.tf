@@ -125,48 +125,6 @@ variable "enable_confluent_resources" {
   default     = false
 }
 
-variable "enable_astra_resources" {
-  description = "Enable Astra DB Serverless resources in a credentialed operator plan."
-  type        = bool
-  default     = false
-}
-
-variable "astra_token" {
-  description = "Astra API token for Terraform provisioning; never commit this value."
-  type        = string
-  sensitive   = true
-  default     = null
-}
-
-variable "astra_database_name" {
-  description = "Astra DB Serverless database name."
-  type        = string
-  default     = "taobao-active-cart"
-}
-
-variable "astra_keyspace" {
-  description = "Initial Astra keyspace for bounded current-user state."
-  type        = string
-  default     = "taobao_streaming"
-}
-
-variable "astra_cloud_provider" {
-  description = "Astra cloud provider: aws, azure, or gcp."
-  type        = string
-  default     = "aws"
-
-  validation {
-    condition     = contains(["aws", "azure", "gcp"], var.astra_cloud_provider)
-    error_message = "astra_cloud_provider must be aws, azure, or gcp."
-  }
-}
-
-variable "astra_region" {
-  description = "Astra cloud region for the Serverless database."
-  type        = string
-  default     = "ap-southeast-1"
-}
-
 variable "confluent_environment_name" {
   description = "Confluent Cloud environment display name."
   type        = string

@@ -1,6 +1,6 @@
 SHELL := bash
 
-.PHONY: checks test package infra-config remote-up remote-down schema cassandra-schema publish-fixture run-job checkpoint-experiment terraform-validate teardown
+.PHONY: checks test package infra-config remote-up remote-down schema publish-fixture run-job checkpoint-experiment terraform-validate teardown
 
 checks: test package infra-config terraform-validate
 
@@ -27,9 +27,6 @@ remote-down:
 
 schema:
 	bash scripts/register_schemas.sh
-
-cassandra-schema:
-	bash scripts/apply_cassandra_schema.sh
 
 publish-fixture:
 	bash scripts/replay.sh

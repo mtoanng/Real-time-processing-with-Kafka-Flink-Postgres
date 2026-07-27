@@ -80,9 +80,9 @@ evidence.
 ## Delivery guarantees
 
 `CheckpointingMode.EXACTLY_ONCE` coordinates Flink-managed state and Kafka
-offset recovery. It does not transactionally commit ClickHouse or Cassandra.
+offset recovery. It does not transactionally commit ClickHouse or Redis.
 
-ClickHouse uses `ReplacingMergeTree` plus `FINAL` canonical views. Cassandra
-uses deterministic primary-key upsert/delete mutations. The combined platform
-is recoverable and effectively once at canonical query boundaries, not globally
-transactional exactly once.
+ClickHouse uses `ReplacingMergeTree` plus `FINAL` canonical views. Redis uses
+deterministic Hash `HSET`/`HDEL` mutations after Flink rejects stale cart
+transitions. The combined platform is recoverable and effectively once at
+logical query boundaries, not globally transactional exactly once.

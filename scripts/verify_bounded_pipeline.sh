@@ -23,7 +23,7 @@ PYTHONPATH=producer/src python scripts/verify_clickhouse.py \
   --run-id "$run_b"
 
 if [ "${RUNTIME_PROFILE:-core}" = serving ]; then
-  echo "Verifying optional Cassandra active cart for user 100"
+  echo "Verifying optional Redis active cart for user 100"
   lookup_output="$(bash scripts/lookup_active_cart.sh 100)"
   echo "$lookup_output"
   if ! grep -q 'user_id=100 item_id=501 ' <<<"$lookup_output"; then

@@ -17,7 +17,7 @@ import com.taobao.behavior.processing.EventValidator;
 import com.taobao.behavior.processing.ImmediateBoundedOutOfOrdernessGenerator;
 import com.taobao.behavior.processing.LateEventRouter;
 import com.taobao.behavior.sink.ClickHouseSinkFactory;
-import com.taobao.behavior.sink.CassandraActiveCartSink;
+import com.taobao.behavior.sink.RedisActiveCartSink;
 import java.time.Duration;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
@@ -181,13 +181,13 @@ public final class TaobaoStreamJob {
                                 "item_metrics_1m"))
                 .name("WriteItemMetrics1m")
                 .uid("write-item-metrics-1m");
-        if (configuration.isCassandraEnabled()) {
+        if (configuration.isRedisEnabled()) {
             acceptedUnique
                     .keyBy(UserBehaviorEvent::getUserId)
                     .process(new ActiveCartProjector())
                     .name("ProjectUserActiveCart")
                     .uid("project-user-active-cart")
-                    .addSink(new CassandraActiveCartSink(configuration.cassandraConfig()))
+                    .addSink(new RedisActiveCartSink(configuration.redisConfig()))
                     .name("WriteUserActiveCart")
                     .uid("write-user-active-cart");
         }

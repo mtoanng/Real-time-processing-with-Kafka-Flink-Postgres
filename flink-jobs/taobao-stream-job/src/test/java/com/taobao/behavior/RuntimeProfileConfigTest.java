@@ -17,7 +17,7 @@ class RuntimeProfileConfigTest {
                 Map.of("RUNTIME_PROFILE", "checks"));
 
         assertTrue(config.isChecksProfile());
-        assertFalse(config.isCassandraEnabled());
+        assertFalse(config.isRedisEnabled());
         assertFalse(config.isCdcEnabled());
         assertFalse(config.checkpointingEnabledByDefault());
         assertEquals("PLAINTEXT", config.kafkaProperties().getProperty("security.protocol"));
@@ -27,21 +27,22 @@ class RuntimeProfileConfigTest {
     void coreRequiresNoOptionalExtensionAndDefaultsCheckpointingOn() {
         RuntimeProfileConfig config =
                 RuntimeProfileConfig.fromEnvironment(Map.of("RUNTIME_PROFILE", "core"));
-        assertFalse(config.isCassandraEnabled());
+        assertFalse(config.isRedisEnabled());
         assertFalse(config.isCdcEnabled());
         assertFalse(config.isObservabilityEnabled());
         assertTrue(config.checkpointingEnabledByDefault());
     }
 
     @Test
-    void servingAddsCassandraWithoutCdcOrObservability() {
+    void servingAddsRedisWithoutCdcOrObservability() {
         Map<String, String> environment = localServingEnvironment();
         RuntimeProfileConfig config = RuntimeProfileConfig.fromEnvironment(environment);
 
-        assertTrue(config.isCassandraEnabled());
+        assertTrue(config.isRedisEnabled());
         assertFalse(config.isCdcEnabled());
         assertFalse(config.isObservabilityEnabled());
-        assertEquals("local", config.cassandraConfig().mode());
+        assertEquals("redis", config.redisConfig().host());
+        assertEquals(604_800L, config.redisConfig().cartTtlSeconds());
     }
 
     @Test
@@ -52,7 +53,7 @@ class RuntimeProfileConfigTest {
 
         RuntimeProfileConfig config = RuntimeProfileConfig.fromEnvironment(environment);
 
-        assertFalse(config.isCassandraEnabled());
+        assertFalse(config.isRedisEnabled());
         assertTrue(config.isCdcEnabled());
         assertFalse(config.isObservabilityEnabled());
         assertTrue(config.checkpointingEnabledByDefault());
@@ -71,7 +72,7 @@ class RuntimeProfileConfigTest {
         RuntimeProfileConfig config =
                 RuntimeProfileConfig.fromEnvironment(
                         Map.of("RUNTIME_PROFILE", "observability"));
-        assertFalse(config.isCassandraEnabled());
+        assertFalse(config.isRedisEnabled());
         assertFalse(config.isCdcEnabled());
         assertTrue(config.isObservabilityEnabled());
     }
@@ -124,12 +125,10 @@ class RuntimeProfileConfigTest {
     private static Map<String, String> localServingEnvironment() {
         Map<String, String> environment = new HashMap<>();
         environment.put("RUNTIME_PROFILE", "serving");
-        environment.put("CASSANDRA_MODE", "local");
-        environment.put("CASSANDRA_HOSTS", "localhost");
-        environment.put("CASSANDRA_PORT", "9042");
-        environment.put("CASSANDRA_DATACENTER", "datacenter1");
-        environment.put("CASSANDRA_KEYSPACE", "taobao_streaming");
-        environment.put("CASSANDRA_TABLE", "user_active_cart");
+        environment.put("REDIS_HOST", "redis");
+        environment.put("REDIS_PORT", "6379");
+        environment.put("REDIS_TLS", "false");
+        environment.put("REDIS_KEY_PREFIX", "taobao:active_cart");
         return environment;
     }
 }
