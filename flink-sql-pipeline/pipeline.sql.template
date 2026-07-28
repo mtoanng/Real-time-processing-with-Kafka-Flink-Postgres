@@ -1,0 +1,216 @@
+-- Active Project 1 business pipeline. Data engineers author SQL/Python only.
+-- JVM code is limited to the Flink runtime and prebuilt connector JARs.
+
+SET 'execution.runtime-mode' = 'streaming';
+SET 'execution.checkpointing.interval' = '{{CHECKPOINT_INTERVAL}}';
+SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
+SET 'table.dml-sync' = 'true';
+SET 'table.exec.state.ttl' = '{{DEDUP_RETENTION}}';
+SET 'table.local-time-zone' = 'UTC';
+SET 'parallelism.default' = '1';
+
+CREATE TABLE behavior_events (
+    event_id STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    behavior_type STRING,
+    event_time_ms BIGINT,
+    source_sequence BIGINT,
+    replay_run_id STRING,
+    event_time AS TO_TIMESTAMP_LTZ(event_time_ms, 3),
+    observed_proc_time AS PROCTIME(),
+    WATERMARK FOR event_time AS event_time - INTERVAL '{{MAX_OUT_OF_ORDERNESS_SECONDS}}' SECOND
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{INPUT_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'properties.group.id' = '{{KAFKA_CONSUMER_GROUP}}',
+    'scan.startup.mode' = 'earliest-offset',
+    'scan.bounded.mode' = 'latest-offset',
+    'value.format' = 'avro-confluent',
+    'value.avro-confluent.url' = '{{SCHEMA_REGISTRY_URL}}'{{SOURCE_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE raw_events_out (
+    event_id STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    behavior_type STRING,
+    event_time_ms BIGINT,
+    source_sequence BIGINT,
+    replay_run_id STRING,
+    record_version BIGINT
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{RAW_OUTPUT_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{SINK_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE metrics_out (
+    window_start STRING,
+    item_id BIGINT,
+    source_category_id BIGINT,
+    pv_count BIGINT,
+    cart_count BIGINT,
+    fav_count BIGINT,
+    buy_count BIGINT,
+    unique_users BIGINT,
+    replay_run_id STRING,
+    record_version BIGINT
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{METRICS_OUTPUT_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{SINK_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE quality_events_out (
+    quality_event_id STRING,
+    quality_type STRING,
+    event_id STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    behavior_type STRING,
+    event_time_ms BIGINT,
+    replay_run_id STRING,
+    source_sequence BIGINT,
+    reason_code STRING,
+    reason_message STRING,
+    observed_at_ms BIGINT,
+    record_version BIGINT
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{QUALITY_OUTPUT_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{SINK_SECURITY_OPTIONS}}
+);
+
+CREATE TEMPORARY VIEW classified_events AS
+SELECT
+    *,
+    CASE
+        WHEN event_id IS NULL OR CHAR_LENGTH(TRIM(event_id)) = 0 THEN 'INVALID_EVENT_ID'
+        WHEN user_id <= 0 OR item_id <= 0 OR category_id <= 0 THEN 'INVALID_IDENTIFIER'
+        WHEN event_time_ms <= 0 THEN 'INVALID_EVENT_TIME'
+        WHEN behavior_type NOT IN ('pv', 'cart', 'fav', 'buy') THEN 'INVALID_BEHAVIOR_TYPE'
+        ELSE NULL
+    END AS validation_reason
+FROM behavior_events;
+
+CREATE TEMPORARY VIEW ranked_valid_events AS
+SELECT
+    *,
+    COUNT(*) OVER (
+        PARTITION BY event_id
+        ORDER BY observed_proc_time ASC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS event_occurrence
+FROM classified_events
+WHERE validation_reason IS NULL;
+
+CREATE TEMPORARY VIEW accepted_unique_events AS
+SELECT *
+FROM ranked_valid_events
+WHERE event_occurrence = 1;
+
+CREATE TEMPORARY VIEW quality_events AS
+SELECT
+    SHA2(CONCAT_WS('|', 'INVALID', COALESCE(event_id, ''), replay_run_id,
+                   CAST(source_sequence AS STRING), validation_reason), 256) AS quality_event_id,
+    'INVALID' AS quality_type,
+    event_id,
+    user_id,
+    item_id,
+    category_id,
+    behavior_type,
+    event_time_ms,
+    replay_run_id,
+    source_sequence,
+    validation_reason AS reason_code,
+    'event failed the source-faithful semantic contract' AS reason_message,
+    CAST(UNIX_TIMESTAMP() * 1000 AS BIGINT) AS observed_at_ms,
+    event_time_ms AS record_version
+FROM classified_events
+WHERE validation_reason IS NOT NULL
+UNION ALL
+SELECT
+    SHA2(CONCAT_WS('|', 'DUPLICATE', event_id, replay_run_id,
+                   CAST(source_sequence AS STRING)), 256) AS quality_event_id,
+    'DUPLICATE' AS quality_type,
+    event_id,
+    user_id,
+    item_id,
+    category_id,
+    behavior_type,
+    event_time_ms,
+    replay_run_id,
+    source_sequence,
+    'DUPLICATE_WITHIN_RETENTION' AS reason_code,
+    'event_id was already observed within the configured state TTL' AS reason_message,
+    CAST(UNIX_TIMESTAMP() * 1000 AS BIGINT) AS observed_at_ms,
+    event_time_ms AS record_version
+FROM ranked_valid_events
+WHERE event_occurrence > 1
+UNION ALL
+SELECT
+    SHA2(CONCAT_WS('|', 'LATE', event_id, replay_run_id,
+                   CAST(source_sequence AS STRING)), 256) AS quality_event_id,
+    'LATE' AS quality_type,
+    event_id,
+    user_id,
+    item_id,
+    category_id,
+    behavior_type,
+    event_time_ms,
+    replay_run_id,
+    source_sequence,
+    'LATE_FOR_AGGREGATION' AS reason_code,
+    'event_time is at or behind the current watermark' AS reason_message,
+    CAST(UNIX_TIMESTAMP() * 1000 AS BIGINT) AS observed_at_ms,
+    event_time_ms AS record_version
+FROM accepted_unique_events
+WHERE CURRENT_WATERMARK(event_time) IS NOT NULL
+  AND event_time <= CURRENT_WATERMARK(event_time);
+
+EXECUTE STATEMENT SET
+BEGIN
+    INSERT INTO raw_events_out
+    SELECT
+        event_id,
+        user_id,
+        item_id,
+        category_id,
+        behavior_type,
+        event_time_ms,
+        source_sequence,
+        replay_run_id,
+        event_time_ms
+    FROM accepted_unique_events;
+
+    INSERT INTO metrics_out
+    SELECT
+        DATE_FORMAT(window_start, 'yyyy-MM-dd HH:mm:ss.SSS'),
+        item_id,
+        category_id AS source_category_id,
+        COUNT(*) FILTER (WHERE behavior_type = 'pv'),
+        COUNT(*) FILTER (WHERE behavior_type = 'cart'),
+        COUNT(*) FILTER (WHERE behavior_type = 'fav'),
+        COUNT(*) FILTER (WHERE behavior_type = 'buy'),
+        COUNT(DISTINCT user_id),
+        MIN(replay_run_id),
+        UNIX_TIMESTAMP(DATE_FORMAT(window_end, 'yyyy-MM-dd HH:mm:ss')) * 1000
+    FROM TABLE(
+        TUMBLE(TABLE accepted_unique_events, DESCRIPTOR(event_time), INTERVAL '1' MINUTE)
+    )
+    GROUP BY window_start, window_end, item_id, category_id;
+
+    INSERT INTO quality_events_out
+    SELECT * FROM quality_events;
+END;

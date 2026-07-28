@@ -10,10 +10,10 @@
     <packaging>pom</packaging>
 
     <name>Taobao Real-Time Customer Behavior Platform</name>
-    <description>Parent build for the Taobao Python replay and Java Flink streaming platform.</description>
+    <description>Dependency bundle for the SQL-authored Taobao Flink pipeline.</description>
 
     <modules>
-        <module>flink-jobs/taobao-stream-job</module>
+        <module>flink-sql-pipeline</module>
     </modules>
 
     <properties>
@@ -22,16 +22,10 @@
         <maven.compiler.target>11</maven.compiler.target>
 
         <flink.version>1.20.2</flink.version>
-        <clickhouse.flink.version>0.2.0</clickhouse.flink.version>
         <kafka.connector.version>3.3.0-1.20</kafka.connector.version>
         <avro.version>1.11.3</avro.version>
-        <jedis.version>7.1.0</jedis.version>
-        <junit.version>5.10.1</junit.version>
 
-        <maven.compiler.plugin.version>3.10.1</maven.compiler.plugin.version>
         <maven.shade.plugin.version>3.4.0</maven.shade.plugin.version>
-        <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
-        <avro.maven.plugin.version>1.11.3</avro.maven.plugin.version>
     </properties>
 
     <repositories>
@@ -56,23 +50,8 @@
             <plugins>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-compiler-plugin</artifactId>
-                    <version>${maven.compiler.plugin.version}</version>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-shade-plugin</artifactId>
                     <version>${maven.shade.plugin.version}</version>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-surefire-plugin</artifactId>
-                    <version>${maven.surefire.plugin.version}</version>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.avro</groupId>
-                    <artifactId>avro-maven-plugin</artifactId>
-                    <version>${avro.maven.plugin.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import IO
 
 from taobao_replay.contracts import UserBehaviorEvent
-from taobao_replay.kafka import DEFAULT_TOPIC, KafkaEventPublisher, build_schema_registry_producer
+from taobao_replay.kafka import KafkaEventPublisher, build_schema_registry_producer
 from taobao_replay.reader import ParseIssue
 from taobao_replay.replay import replay_file
 
@@ -29,9 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument("--invalid-output", help="optional JSONL path for rejected rows")
     replay_parser.add_argument("--force", action="store_true", help="overwrite output files")
 
-    publish_parser = subparsers.add_parser(
-        "publish", help="replay accepted rows to Kafka using Confluent Avro"
-    )
+    publish_parser = subparsers.add_parser("publish", help="replay accepted rows to Kafka Avro")
     publish_parser.add_argument("input", type=Path)
     publish_parser.add_argument("--run-id", default="kafka-run")
     publish_parser.add_argument("--batch-size", type=int, default=1_000)
@@ -40,13 +38,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--bootstrap-servers",
         default=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
     )
+    publish_parser.add_argument("--topic", default=os.getenv("KAFKA_TOPIC", "user-behavior-events"))
     publish_parser.add_argument(
         "--schema-registry-url",
-        default=os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081/apis/ccompat/v7"),
+        default=os.getenv(
+            "SCHEMA_REGISTRY_URL",
+            "http://localhost:8081/apis/ccompat/v7",
+        ),
     )
-    publish_parser.add_argument("--topic", default=os.getenv("KAFKA_TOPIC", DEFAULT_TOPIC))
     publish_parser.add_argument(
-        "--schema", type=Path, default=Path("schemas/user-behavior-event.avsc")
+        "--schema",
+        type=Path,
+        default=Path("schemas/user-behavior-event.avsc"),
     )
     publish_parser.add_argument("--invalid-output")
     publish_parser.add_argument("--force", action="store_true")

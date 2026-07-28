@@ -2,6 +2,7 @@ package com.taobao.behavior.sink;
 
 import com.taobao.behavior.avro.UserBehaviorEvent;
 import com.taobao.behavior.model.ItemMetrics1m;
+import com.taobao.behavior.model.ProductCatalogRecord;
 import com.taobao.behavior.model.StreamQualityEvent;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -57,6 +58,18 @@ final class ClickHouseRowMapper {
         row.put("reason_message", event.getReasonMessage());
         row.put("observed_at", utcTime(event.getObservedAt()));
         row.put("record_version", event.getObservedAt());
+        return row;
+    }
+
+    static Map<String, Object> productCatalogValues(ProductCatalogRecord product) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("product_id", product.getProductId());
+        row.put("category_id", product.getCategoryId());
+        row.put("product_name", product.getProductName());
+        row.put("price", product.getPrice());
+        row.put("is_active", product.isActive());
+        row.put("updated_at", utcTime(product.getUpdatedAtMs()));
+        row.put("catalog_version", product.getCatalogVersion());
         return row;
     }
 

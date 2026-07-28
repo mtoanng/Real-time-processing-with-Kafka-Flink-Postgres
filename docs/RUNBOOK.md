@@ -1,19 +1,16 @@
-# Runbook
+# Core runbook
 
-Run the complete composition only on a disposable host with Docker, Java 11+,
-Maven, Python 3.11+, `curl`, and enough memory for Kafka, Flink, ClickHouse,
-Schema Registry, and Redis.
-
-## Checks
-
-Prediction: 22 Python tests and 33 Java tests pass; the shaded JAR packages and
-the single Compose model renders.
+## Credential-independent checks
 
 ```bash
+python -m pip install -e ".[kafka]"
+python -m pip install ruff
 make checks
 ```
 
-## Start, replay, and verify
+No service is contacted by these checks.
+
+## Start and verify
 
 ```bash
 cp .env.example .env
@@ -22,50 +19,50 @@ make replay
 make verify
 ```
 
-`make start` packages the job, starts the six runtime services, and registers
-the Avro schema. `make replay` publishes `golden-a,golden-b` before submitting
-the bounded Kafka source so end-of-input advances the final watermark.
+Inspect the running SQL job and completed checkpoints at
+`http://localhost:8082`. Canonical results can be queried directly:
 
-`make verify` requires exact equality with the committed golden contract for:
+```bash
+curl -sS -u default:local-clickhouse \
+  'http://localhost:8123/?database=taobao_behavior' \
+  --data-binary 'SELECT * FROM raw_behavior_events_canonical ORDER BY source_sequence'
 
-- 11 canonical raw business rows;
-- five metric keys and values;
-- two invalid, eleven duplicate, and one late quality identities;
-- user 1 cart `{101: "11|1511658004000|1511658005000"}`;
-- user 2 empty cart;
-- a positive bounded TTL on every existing cart key.
+curl -sS -u default:local-clickhouse \
+  'http://localhost:8123/?database=taobao_behavior' \
+  --data-binary 'SELECT * FROM item_metrics_1m_canonical ORDER BY window_start,item_id'
+```
+
+`make verify` independently compares stable business columns with
+`tests/fixtures/golden_outputs.json`. It ignores ingestion timestamps and does
+not treat `replay_run_id` as canonical identity.
 
 ## Recovery experiment
 
-This is a controlled failure and must run on a disposable host. First capture
-an uninterrupted snapshot, then repeat the same bounded input with
-`KAFKA_SOURCE_BOUNDED=false`, a short checkpoint interval, and a running job.
-After one checkpoint completes:
+The SQL source is bounded for the fixture. To exercise restart behavior with a
+larger bounded input:
 
-```bash
-RECOVERY_TEST_CONFIRM=YES \
-FLINK_JOB_ID=<job-id> \
-BASELINE_SNAPSHOT=artifacts/uninterrupted.json \
-make recovery-test
-```
+1. Start `core` and submit the SQL pipeline.
+2. Wait for at least one completed checkpoint in the Flink UI.
+3. Terminate the TaskManager process and restart it without deleting the
+   `flink_checkpoints` volume.
+4. Let the job finish.
+5. Save `make verify` output and canonical query snapshots.
+6. Compare them with an uninterrupted run using only stable business columns.
 
-The script restarts the TaskManager, waits for the job to return to `RUNNING`,
-captures canonical raw/metric/quality/cart state, and requires exact equality
-with the uninterrupted snapshot. Until that command succeeds with real
-services, recovery is `NOT VERIFIED`.
+This experiment is **NOT VERIFIED** until real output is captured. Do not claim
+checkpoint mode as end-to-end transactional exactly once.
 
-## Controlled failure experiment
-
-Set `FLINK_MAX_OUT_OF_ORDERNESS_MS=0`, rerun from clean disposable volumes, and
-predict which fixture rows become late before executing. The canonical raw
-count must remain unchanged while metric and late-quality results change.
-Restore the default `5000` afterward.
-
-## Stop
+## Teardown
 
 ```bash
 make stop
 ```
 
-This stops containers but preserves named volumes. Remove volumes only as a
-separate, explicitly approved disposable-host cleanup.
+This keeps named volumes. Remove them only when intentionally discarding local
+Kafka, ClickHouse, and checkpoint state.
+
+## Legacy artifacts
+
+The Compose `legacy` profile is not part of the active runbook. PostgreSQL,
+Debezium, Redis, API, and Java DataStream artifacts are retained only for a
+separately approved cleanup or migration.

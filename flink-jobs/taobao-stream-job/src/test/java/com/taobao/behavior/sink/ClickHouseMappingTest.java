@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.taobao.behavior.EventTestSupport;
 import com.taobao.behavior.avro.BehaviorType;
 import com.taobao.behavior.model.ItemMetrics1m;
+import com.taobao.behavior.model.ProductCatalogRecord;
 import com.taobao.behavior.model.StreamQualityEvent;
+import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -62,5 +64,25 @@ class ClickHouseMappingTest {
         assertEquals("LATE_FOR_AGGREGATION", auditRow.get("reason_code"));
         assertEquals(1_511_658_060_000L, auditRow.get("record_version"));
         assertEquals(1_511_658_000_000L, auditRow.get("event_time"));
+    }
+
+    @Test
+    void mapsCurrentCatalogToTheDdlColumns() {
+        ProductCatalogRecord product =
+                new ProductCatalogRecord(
+                        100L,
+                        10L,
+                        "Wireless Headphones Pro",
+                        new BigDecimal("44.99"),
+                        true,
+                        1_785_287_100_000L,
+                        2L);
+
+        Map<String, Object> row = ClickHouseRowMapper.productCatalogValues(product);
+
+        assertEquals(100L, row.get("product_id"));
+        assertEquals(new BigDecimal("44.99"), row.get("price"));
+        assertEquals(true, row.get("is_active"));
+        assertEquals(2L, row.get("catalog_version"));
     }
 }

@@ -1,0 +1,6 @@
+*
+!pyproject.toml
+!producer/
+!producer/**
+!schemas/
+!schemas/**

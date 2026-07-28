@@ -36,6 +36,12 @@ class ClickHouseDdlContractTest {
         assertTrue(ddl.contains("FROM taobao_behavior.raw_behavior_events FINAL"));
         assertTrue(ddl.contains("FROM taobao_behavior.item_metrics_1m FINAL"));
         assertTrue(ddl.contains("FROM taobao_behavior.stream_quality_events FINAL"));
+        assertTrue(ddl.contains("product_catalog_current"));
+        assertTrue(ddl.contains("price Decimal(12, 2)"));
+        assertTrue(ddl.contains("catalog_version UInt64"));
+        assertTrue(ddl.contains("ORDER BY product_id"));
+        assertTrue(ddl.contains("product_catalog_current_canonical"));
+        assertTrue(ddl.contains("FROM taobao_behavior.product_catalog_current FINAL"));
         assertFalse(ddl.contains("invalid_behavior_events"));
         assertFalse(ddl.contains("late_behavior_events"));
         assertFalse(ddl.contains("f1_telemetry"));

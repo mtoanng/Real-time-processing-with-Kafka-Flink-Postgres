@@ -4,6 +4,7 @@ import com.clickhouse.data.ClickHouseDataType;
 import com.clickhouse.data.ClickHouseFormat;
 import com.taobao.behavior.avro.UserBehaviorEvent;
 import com.taobao.behavior.model.ItemMetrics1m;
+import com.taobao.behavior.model.ProductCatalogRecord;
 import com.taobao.behavior.model.StreamQualityEvent;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +62,21 @@ public final class ClickHouseSinkFactory {
                 table,
                 StreamQualityEvent.class,
                 new QualityEventMapper(),
+                100,
+                2,
+                1_000);
+    }
+
+    public static Sink<ProductCatalogRecord> createProductCatalogSink(
+            String endpoint, String user, String password, String database, String table) {
+        return createSink(
+                endpoint,
+                user,
+                password,
+                database,
+                table,
+                ProductCatalogRecord.class,
+                new ProductCatalogMapper(),
                 100,
                 2,
                 1_000);
@@ -176,6 +192,26 @@ public final class ClickHouseSinkFactory {
                     ColumnBinding.dateTime64("observed_at", "observed_at", 3),
                     ColumnBinding.scalar(
                             "record_version", "record_version", ClickHouseDataType.UInt64));
+        }
+    }
+
+    private static final class ProductCatalogMapper extends DataMapper<ProductCatalogRecord> {
+        @Override
+        public void toMap(ProductCatalogRecord product, Map<String, Object> out) {
+            out.putAll(ClickHouseRowMapper.productCatalogValues(product));
+        }
+
+        @Override
+        public List<ColumnBinding> bindings() {
+            return List.of(
+                    ColumnBinding.scalar("product_id", "product_id", ClickHouseDataType.UInt64),
+                    ColumnBinding.scalar("category_id", "category_id", ClickHouseDataType.UInt64),
+                    ColumnBinding.scalar("product_name", "product_name", ClickHouseDataType.String),
+                    ColumnBinding.scalar("price", "price", ClickHouseDataType.Decimal),
+                    ColumnBinding.scalar("is_active", "is_active", ClickHouseDataType.Bool),
+                    ColumnBinding.dateTime64("updated_at", "updated_at", 3),
+                    ColumnBinding.scalar(
+                            "catalog_version", "catalog_version", ClickHouseDataType.UInt64));
         }
     }
 

@@ -1,42 +1,45 @@
-# Active blueprint: minimal event-time streaming core
+# Project 1 active blueprint
 
-This file is the source of truth for implementation scope. The current phase is
-the semantic-preserving repository simplification explicitly authorized on
-`refactor/redis_store_migration`.
-
-## Architecture
+## Release target
 
 ```text
-raw Taobao rows -> Python replay -> Kafka Avro + Schema Registry
--> one Java Flink DataStream job
--> ClickHouse canonical raw, one-minute metrics, and quality
--> Redis/Valkey active-cart projection
+Python deterministic replay
+  -> Kafka + Schema Registry
+  -> one Flink 1.20.2 SQL statement set
+  -> Kafka output contracts
+  -> ClickHouse canonical raw, one-minute metrics, and quality evidence
 ```
 
-The runtime contains Kafka, Schema Registry, ClickHouse, Redis, and one Flink
-JobManager/TaskManager pair. Checks start no services. There are no optional
-application profiles.
+The Data Engineer authoring interface is Python and SQL. Flink remains a JVM
+engine and uses prebuilt JVM connectors. No project-authored Java business
+pipeline is required by the active build or runtime.
 
-## Required semantics
+## Invariants
 
-- Event identity is SHA-256 of the five source fields plus source sequence;
-  replay run ID is lineage only.
-- Semantic validation precedes bounded event-ID deduplication.
-- Accepted unique events always reach canonical raw.
-- Events at or behind the watermark create late evidence and skip metrics.
-- Metric identity is `(window_start, item_id, source_category_id)`.
-- ClickHouse canonical views are logically duplicate-free without waiting for
-  merges.
-- Redis stores only bounded-TTL, user-keyed active carts; cart upserts and buy
-  deletes with stale-transition protection.
-- Checkpoints coordinate Flink state and Kafka offsets. External sinks converge
-  through deterministic IDs and logical keys; there is no global transaction.
+1. `event_id` is replay-independent canonical identity.
+2. `replay_run_id` is lineage only.
+3. Raw history is source-faithful and unique by `event_id`.
+4. Metric grain is `(window_start, item_id, source_category_id)`.
+5. Invalid, duplicate, and late classifications are durable.
+6. Deduplication state is bounded by a configurable TTL.
+7. Persistent checkpoints protect Flink state and Kafka positions.
+8. ClickHouse canonical reads use explicit replacement semantics.
+9. The system does not claim global exactly-once delivery.
 
-The exact accounting equations and golden outputs are defined in
-`docs/SEMANTICS.md` and `tests/fixtures/golden_outputs.json`.
+## Active versus legacy
 
-## Delivery gate
+Active: Python replay, Kafka, Schema Registry, Flink SQL, ClickHouse.
 
-Codebase verification requires Python tests, Java tests/package, schema
-contracts, and Compose rendering. Live runtime and recovery claims remain
-`NOT VERIFIED` until the commands in `docs/RUNBOOK.md` produce real evidence.
+Legacy/non-active: Java DataStream job, Redis serving, HTTP API, PostgreSQL,
+Debezium, and Product CDC. These artifacts must not block or redefine core
+analytics.
+
+Future Product CDC enrichment is **NOT IMPLEMENTED** and **NOT VERIFIED**. It
+must be separately approved and must replace—not coexist with—legacy behavior
+rule CDC semantics.
+
+## Verification status
+
+Credential-independent checks establish codebase readiness. Real Kafka/Flink/
+ClickHouse execution and recovery evidence are required before marking
+deployment verification complete.

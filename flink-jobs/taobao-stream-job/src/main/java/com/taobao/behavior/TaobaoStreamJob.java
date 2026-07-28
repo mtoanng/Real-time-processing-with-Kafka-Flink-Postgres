@@ -5,6 +5,7 @@ import com.taobao.behavior.aggregation.ItemMetricsWindowFunction;
 import com.taobao.behavior.avro.UserBehaviorEvent;
 import com.taobao.behavior.model.ItemCategoryKey;
 import com.taobao.behavior.model.ItemMetrics1m;
+import com.taobao.behavior.model.ProductCatalogRecord;
 import com.taobao.behavior.model.StreamQualityEvent;
 import com.taobao.behavior.processing.ActiveCartProjector;
 import com.taobao.behavior.processing.CheckpointPolicy;
@@ -15,6 +16,7 @@ import com.taobao.behavior.processing.ImmediateBoundedOutOfOrdernessGenerator;
 import com.taobao.behavior.processing.LateEventRouter;
 import com.taobao.behavior.sink.ClickHouseSinkFactory;
 import com.taobao.behavior.sink.RedisActiveCartSink;
+import com.taobao.behavior.source.ProductCatalogDebeziumDeserializer;
 import java.time.Duration;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
@@ -36,6 +38,8 @@ public final class TaobaoStreamJob {
         String bootstrapServers = configuration.value("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092");
         String topic = configuration.value("KAFKA_TOPIC", "user-behavior-events");
         String consumerGroup = configuration.value("KAFKA_CONSUMER_GROUP", "taobao-stream-job");
+        String catalogTopic =
+                configuration.value("KAFKA_CATALOG_TOPIC", "product-catalog-cdc");
         String schemaRegistryUrl = configuration.value(
                 "SCHEMA_REGISTRY_URL", "http://localhost:8081/apis/ccompat/v7");
         String clickHouseEndpoint = configuration.value("CLICKHOUSE_ENDPOINT", "https://localhost:8443");
@@ -92,9 +96,27 @@ public final class TaobaoStreamJob {
         }
         KafkaSource<UserBehaviorEvent> source = sourceBuilder.build();
 
+        var catalogSourceBuilder = KafkaSource.<ProductCatalogRecord>builder()
+                .setBootstrapServers(bootstrapServers)
+                .setTopics(catalogTopic)
+                .setGroupId(consumerGroup + "-catalog")
+                .setProperties(configuration.kafkaProperties())
+                .setStartingOffsets(OffsetsInitializer.earliest())
+                .setDeserializer(new ProductCatalogDebeziumDeserializer());
+        if (configuration.booleanValue("KAFKA_SOURCE_BOUNDED", true)) {
+            catalogSourceBuilder.setBounded(OffsetsInitializer.latest());
+        } else {
+            catalogSourceBuilder.setUnbounded(OffsetsInitializer.earliest());
+        }
+
         DataStream<UserBehaviorEvent> decoded = execution.fromSource(
                         source, WatermarkStrategy.noWatermarks(), "KafkaUserBehaviorSource")
                 .uid("kafka-user-behavior-source");
+        DataStream<ProductCatalogRecord> catalog = execution.fromSource(
+                        catalogSourceBuilder.build(),
+                        WatermarkStrategy.noWatermarks(),
+                        "KafkaProductCatalogSource")
+                .uid("kafka-product-catalog-source");
 
         SingleOutputStreamOperator<UserBehaviorEvent> valid = decoded
                 .process(new EventValidator())
@@ -186,6 +208,15 @@ public final class TaobaoStreamJob {
                 .addSink(new RedisActiveCartSink(configuration.redisConfig()))
                 .name("WriteUserActiveCart")
                 .uid("write-user-active-cart");
+        catalog.sinkTo(
+                        ClickHouseSinkFactory.createProductCatalogSink(
+                                clickHouseEndpoint,
+                                clickHouseUser,
+                                clickHousePassword,
+                                clickHouseDatabase,
+                                "product_catalog_current"))
+                .name("WriteProductCatalogCurrent")
+                .uid("write-product-catalog-current");
 
         execution.execute("Taobao Real-Time Customer Behavior Platform");
     }
