@@ -1,9 +1,7 @@
 package com.taobao.behavior.processing;
 
 import com.taobao.behavior.avro.UserBehaviorEvent;
-import com.taobao.behavior.model.ActiveCartItem;
 import com.taobao.behavior.model.CartItemState;
-import com.taobao.behavior.model.CartLifecycleTransition;
 import com.taobao.behavior.model.CartMutation;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -21,48 +19,51 @@ public class ActiveCartProjector extends KeyedProcessFunction<Long, UserBehavior
     }
 
     @Override
-    public void processElement(UserBehaviorEvent event, Context context, Collector<CartMutation> output)
+    public void processElement(UserBehaviorEvent event, Context context, Collector<CartMutation> out)
             throws Exception {
-        CartLifecycleTransition transition = transition(itemStates.get(event.getItemId()), event);
-        if (transition == null) {
+        CartItemState current = itemStates.get(event.getItemId());
+        CartItemState next = nextState(current, event);
+        if (next == null) {
             return;
         }
-        itemStates.put(event.getItemId(), transition.getNextState());
-        transition.getMutation().ifPresent(output::collect);
+        itemStates.put(event.getItemId(), next);
+        out.collect(mutation(event, next));
     }
 
-    public static CartLifecycleTransition transition(CartItemState current, UserBehaviorEvent event) {
-        if (!isCartOrBuy(event) || isStale(current, event)) {
+    public static CartItemState nextState(CartItemState current, UserBehaviorEvent event) {
+        String behavior = event.getBehaviorType().toString();
+        if ((!"cart".equals(behavior) && !"buy".equals(behavior)) || isStale(current, event)) {
             return null;
         }
-        boolean cart = "cart".equals(event.getBehaviorType().toString());
+        boolean active = "cart".equals(behavior);
         long eventTime = event.getEventTimeMs();
-        CartItemState next = new CartItemState(
-                cart,
+        long addedAt =
+                active && (current == null || !current.isActive())
+                        ? eventTime
+                        : current == null ? eventTime : current.getAddedAtMs();
+        return new CartItemState(
+                active,
                 event.getCategoryId(),
-                cart && (current == null || !current.isActive()) ? eventTime : current.getAddedAtMs(),
+                addedAt,
                 eventTime,
                 eventTime,
                 event.getSourceSequence());
-        ActiveCartItem item = new ActiveCartItem(
-                event.getUserId(), event.getItemId(), next.getCategoryId(), next.getAddedAtMs(), eventTime);
-        if (cart && current != null && current.isActive()
-                && current.getLastEventTimeMs() == eventTime
-                && current.getLastSourceSequence() == event.getSourceSequence()) {
-            return null;
-        }
-        return new CartLifecycleTransition(
-                next, new CartMutation(cart ? CartMutation.Type.UPSERT_CART_ITEM : CartMutation.Type.DELETE_CART_ITEM, item));
     }
 
-    private static boolean isCartOrBuy(UserBehaviorEvent event) {
-        String behavior = event.getBehaviorType().toString();
-        return "cart".equals(behavior) || "buy".equals(behavior);
+    public static CartMutation mutation(UserBehaviorEvent event, CartItemState state) {
+        return new CartMutation(
+                state.isActive() ? CartMutation.Type.UPSERT : CartMutation.Type.DELETE,
+                event.getUserId(),
+                event.getItemId(),
+                state.getCategoryId(),
+                state.getAddedAtMs(),
+                state.getLastUpdatedAtMs());
     }
 
     private static boolean isStale(CartItemState current, UserBehaviorEvent event) {
-        return current != null && (event.getEventTimeMs() < current.getLastEventTimeMs()
-                || (event.getEventTimeMs() == current.getLastEventTimeMs()
-                && event.getSourceSequence() <= current.getLastSourceSequence()));
+        return current != null
+                && (event.getEventTimeMs() < current.getLastEventTimeMs()
+                        || (event.getEventTimeMs() == current.getLastEventTimeMs()
+                                && event.getSourceSequence() <= current.getLastSourceSequence()));
     }
 }

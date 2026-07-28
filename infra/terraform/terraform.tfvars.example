@@ -1,8 +1,0 @@
-aws_region        = "ap-southeast-1"
-ami_id            = "replace-with-an-amazon-linux-2023-ami-id"
-key_name          = "replace-with-an-existing-ec2-key-pair-name"
-ssh_cidr          = "203.0.113.10/32"
-instance_type     = "t3.small"
-availability_zone = "ap-southeast-1a"
-runtime_profile   = "core"
-flink_version     = "1.20.2"

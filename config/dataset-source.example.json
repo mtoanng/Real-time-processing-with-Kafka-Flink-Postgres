@@ -1,9 +1,0 @@
-{
-  "dataset_name": "User Behavior Data from Taobao for Recommendation",
-  "dataset_kind": "raw_event_rows",
-  "source_url": "https://tianchi.aliyun.com/dataset/dataDetail?dataId=649",
-  "file_name": "UserBehavior.csv",
-  "acquired_at_utc": "REPLACE_WITH_ACQUISITION_TIMESTAMP",
-  "expected_sha256": "replace-with-the-64-character-sha256-of-the-downloaded-file",
-  "expected_row_count": 0
-}

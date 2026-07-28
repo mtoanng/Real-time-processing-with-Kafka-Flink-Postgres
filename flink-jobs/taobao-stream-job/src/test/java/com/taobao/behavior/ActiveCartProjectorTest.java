@@ -1,57 +1,69 @@
 package com.taobao.behavior;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.taobao.behavior.avro.BehaviorType;
 import com.taobao.behavior.model.CartItemState;
-import com.taobao.behavior.model.CartLifecycleTransition;
 import com.taobao.behavior.model.CartMutation;
 import com.taobao.behavior.processing.ActiveCartProjector;
 import org.junit.jupiter.api.Test;
 
 class ActiveCartProjectorTest {
     @Test
-    void cartCreatesItemAndRepeatedCartIsIdempotent() {
-        CartLifecycleTransition first = ActiveCartProjector.transition(null,
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.cart, 10_000L, 1L));
+    void repeatedAndStaleTransitionsConverge() {
+        var cart = EventTestSupport.event(
+                1L, 100L, 10L, BehaviorType.cart, 1_511_658_000_000L, 0L);
+        CartItemState active = ActiveCartProjector.nextState(null, cart);
+        assertTrue(active.isActive());
+        assertEquals(CartMutation.Type.UPSERT, ActiveCartProjector.mutation(cart, active).getType());
+        assertNull(ActiveCartProjector.nextState(active, cart));
 
-        assertEquals(CartMutation.Type.UPSERT_CART_ITEM, first.getMutation().orElseThrow().getType());
-        assertEquals(500L, first.getMutation().orElseThrow().getItem().getItemId());
-        assertNull(ActiveCartProjector.transition(first.getNextState(),
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.cart, 10_000L, 1L)));
+        var buy = EventTestSupport.event(
+                1L, 100L, 10L, BehaviorType.buy, 1_511_658_008_000L, 8L);
+        CartItemState removed = ActiveCartProjector.nextState(active, buy);
+        assertFalse(removed.isActive());
+        assertEquals(CartMutation.Type.DELETE, ActiveCartProjector.mutation(buy, removed).getType());
+        assertNull(ActiveCartProjector.nextState(
+                removed,
+                EventTestSupport.event(
+                        1L, 100L, 10L, BehaviorType.cart, 1_511_658_004_000L, 4L)));
     }
 
     @Test
-    void buyDeletesMatchingItemAndRejectsStaleCart() {
-        CartLifecycleTransition cart = ActiveCartProjector.transition(null,
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.cart, 10_000L, 1L));
-        CartLifecycleTransition buy = ActiveCartProjector.transition(cart.getNextState(),
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.buy, 20_000L, 2L));
+    void goldenCartSequenceHasOneExactActiveItem() {
+        CartItemState item100 = null;
+        CartItemState item101 = null;
+        var item100Cart = EventTestSupport.event(
+                1L, 100L, 10L, BehaviorType.cart, 1_511_658_000_000L, 0L);
+        item100 = ActiveCartProjector.nextState(item100, item100Cart);
+        var item101Cart = EventTestSupport.event(
+                1L, 101L, 11L, BehaviorType.cart, 1_511_658_004_000L, 4L);
+        item101 = ActiveCartProjector.nextState(item101, item101Cart);
+        var repeatedCart = EventTestSupport.event(
+                1L, 101L, 11L, BehaviorType.cart, 1_511_658_005_000L, 5L);
+        item101 = ActiveCartProjector.nextState(item101, repeatedCart);
+        item100 = ActiveCartProjector.nextState(
+                item100,
+                EventTestSupport.event(
+                        1L, 100L, 10L, BehaviorType.buy, 1_511_658_008_000L, 8L));
 
-        assertEquals(CartMutation.Type.DELETE_CART_ITEM, buy.getMutation().orElseThrow().getType());
-        assertNull(ActiveCartProjector.transition(buy.getNextState(),
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.cart, 15_000L, 3L)));
-        assertNull(ActiveCartProjector.transition(buy.getNextState(),
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.buy, 20_000L, 2L)));
+        assertFalse(item100.isActive());
+        assertTrue(item101.isActive());
+        CartMutation result = ActiveCartProjector.mutation(repeatedCart, item101);
+        assertEquals(101L, result.getItemId());
+        assertEquals(1_511_658_004_000L, result.getAddedAtMs());
+        assertEquals(1_511_658_005_000L, result.getLastUpdatedAtMs());
     }
 
     @Test
-    void ignoresPvAndFavAndKeepsUsersAndItemsIndependent() {
-        assertNull(ActiveCartProjector.transition(null,
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.pv, 10_000L, 1L)));
-        assertNull(ActiveCartProjector.transition(null,
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.fav, 10_000L, 1L)));
-
-        CartLifecycleTransition itemA = ActiveCartProjector.transition(null,
-                EventTestSupport.event(100L, 500L, 50L, BehaviorType.cart, 10_000L, 1L));
-        CartLifecycleTransition itemB = ActiveCartProjector.transition(null,
-                EventTestSupport.event(100L, 501L, 51L, BehaviorType.cart, 11_000L, 2L));
-        CartLifecycleTransition otherUser = ActiveCartProjector.transition(null,
-                EventTestSupport.event(101L, 500L, 52L, BehaviorType.cart, 12_000L, 1L));
-
-        assertEquals(500L, itemA.getMutation().orElseThrow().getItem().getItemId());
-        assertEquals(501L, itemB.getMutation().orElseThrow().getItem().getItemId());
-        assertEquals(101L, otherUser.getMutation().orElseThrow().getItem().getUserId());
+    void buyWithoutPriorCartIsAConvergentDelete() {
+        var buy = EventTestSupport.event(
+                2L, 103L, 13L, BehaviorType.buy, 1_511_658_010_000L, 10L);
+        CartItemState removed = ActiveCartProjector.nextState(null, buy);
+        assertFalse(removed.isActive());
+        assertEquals(CartMutation.Type.DELETE, ActiveCartProjector.mutation(buy, removed).getType());
     }
 }

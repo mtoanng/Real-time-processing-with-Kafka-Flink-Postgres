@@ -2,15 +2,12 @@ package com.taobao.behavior;
 
 import com.taobao.behavior.aggregation.ItemMetricsAggregator;
 import com.taobao.behavior.aggregation.ItemMetricsWindowFunction;
-import com.taobao.behavior.avro.BehaviorRule;
 import com.taobao.behavior.avro.UserBehaviorEvent;
-import com.taobao.behavior.model.BehaviorAlert;
 import com.taobao.behavior.model.ItemCategoryKey;
 import com.taobao.behavior.model.ItemMetrics1m;
 import com.taobao.behavior.model.StreamQualityEvent;
 import com.taobao.behavior.processing.ActiveCartProjector;
 import com.taobao.behavior.processing.CheckpointPolicy;
-import com.taobao.behavior.processing.CartAbandonmentRuleProcessor;
 import com.taobao.behavior.processing.DeduplicationConfig;
 import com.taobao.behavior.processing.EventDeduplicator;
 import com.taobao.behavior.processing.EventValidator;
@@ -32,17 +29,10 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 
 public final class TaobaoStreamJob {
-    static final long MAX_OUT_OF_ORDERNESS_MILLIS = 5_000L;
-
     private TaobaoStreamJob() {}
 
     public static void main(String[] args) throws Exception {
-        RuntimeProfileConfig configuration = RuntimeProfileConfig.fromEnvironment(System.getenv());
-        if (configuration.isChecksProfile()) {
-            throw new IllegalArgumentException(
-                    "RUNTIME_PROFILE=checks does not submit a Flink job; "
-                            + "use core, serving, cdc, or observability");
-        }
+        RuntimeConfig configuration = RuntimeConfig.fromEnvironment(System.getenv());
         String bootstrapServers = configuration.value("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092");
         String topic = configuration.value("KAFKA_TOPIC", "user-behavior-events");
         String consumerGroup = configuration.value("KAFKA_CONSUMER_GROUP", "taobao-stream-job");
@@ -56,7 +46,7 @@ public final class TaobaoStreamJob {
                 CheckpointPolicy.fromValues(
                         configuration.value(
                                 "FLINK_CHECKPOINTING_ENABLED",
-                                Boolean.toString(configuration.checkpointingEnabledByDefault())),
+                                "true"),
                         configuration.value("FLINK_CHECKPOINT_INTERVAL_MS", "60000"),
                         configuration.value("FLINK_CHECKPOINT_DIR", ""),
                         configuration.value("FLINK_RESTART_ATTEMPTS", "3"),
@@ -67,9 +57,11 @@ public final class TaobaoStreamJob {
                                 "FLINK_DEDUP_RETENTION_HOURS",
                                 Long.toString(DeduplicationConfig.DEFAULT_RETENTION_HOURS)));
 
+        long maxOutOfOrdernessMillis =
+                configuration.longValue("FLINK_MAX_OUT_OF_ORDERNESS_MS", 5_000L, 0L, 3_600_000L);
         StreamExecutionEnvironment execution =
                 StreamExecutionEnvironment.getExecutionEnvironment();
-        execution.setParallelism(Integer.parseInt(configuration.value("FLINK_PARALLELISM", "1")));
+        execution.setParallelism(1);
         if (checkpointPolicy.isEnabled()) {
             execution.enableCheckpointing(
                     checkpointPolicy.getIntervalMs(), CheckpointingMode.EXACTLY_ONCE);
@@ -82,7 +74,7 @@ public final class TaobaoStreamJob {
                             Duration.ofMillis(checkpointPolicy.getRestartDelayMs())));
         }
 
-        KafkaSource<UserBehaviorEvent> source = KafkaSource.<UserBehaviorEvent>builder()
+        var sourceBuilder = KafkaSource.<UserBehaviorEvent>builder()
                 .setBootstrapServers(bootstrapServers)
                 .setTopics(topic)
                 .setGroupId(consumerGroup)
@@ -92,8 +84,13 @@ public final class TaobaoStreamJob {
                         ConfluentRegistryAvroDeserializationSchema.forSpecific(
                                 UserBehaviorEvent.class,
                                 schemaRegistryUrl,
-                                configuration.schemaRegistryProperties()))
-                .build();
+                                configuration.schemaRegistryProperties()));
+        if (configuration.booleanValue("KAFKA_SOURCE_BOUNDED", true)) {
+            sourceBuilder.setBounded(OffsetsInitializer.latest());
+        } else {
+            sourceBuilder.setUnbounded(OffsetsInitializer.earliest());
+        }
+        KafkaSource<UserBehaviorEvent> source = sourceBuilder.build();
 
         DataStream<UserBehaviorEvent> decoded = execution.fromSource(
                         source, WatermarkStrategy.noWatermarks(), "KafkaUserBehaviorSource")
@@ -117,7 +114,7 @@ public final class TaobaoStreamJob {
         WatermarkStrategy<UserBehaviorEvent> watermarkStrategy = WatermarkStrategy
                 .<UserBehaviorEvent>forGenerator(
                         ignored -> new ImmediateBoundedOutOfOrdernessGenerator(
-                                MAX_OUT_OF_ORDERNESS_MILLIS))
+                                maxOutOfOrdernessMillis))
                 .withTimestampAssigner((event, previousTimestamp) -> event.getEventTimeMs())
                 .withIdleness(Duration.ofSeconds(30));
 
@@ -181,48 +178,14 @@ public final class TaobaoStreamJob {
                                 "item_metrics_1m"))
                 .name("WriteItemMetrics1m")
                 .uid("write-item-metrics-1m");
-        if (configuration.isRedisEnabled()) {
-            acceptedUnique
-                    .keyBy(UserBehaviorEvent::getUserId)
-                    .process(new ActiveCartProjector())
-                    .name("ProjectUserActiveCart")
-                    .uid("project-user-active-cart")
-                    .addSink(new RedisActiveCartSink(configuration.redisConfig()))
-                    .name("WriteUserActiveCart")
-                    .uid("write-user-active-cart");
-        }
-        if (configuration.isCdcEnabled()) {
-            KafkaSource<BehaviorRule> rulesSource = KafkaSource.<BehaviorRule>builder()
-                    .setBootstrapServers(bootstrapServers)
-                    .setTopics(configuration.value("RULES_KAFKA_TOPIC", "behavior-rules"))
-                    .setGroupId(configuration.value("RULES_CONSUMER_GROUP", "taobao-rule-broadcast"))
-                    .setProperties(configuration.kafkaProperties())
-                    .setStartingOffsets(OffsetsInitializer.earliest())
-                    .setValueOnlyDeserializer(
-                            ConfluentRegistryAvroDeserializationSchema.forSpecific(
-                                    BehaviorRule.class,
-                                    schemaRegistryUrl,
-                                    configuration.schemaRegistryProperties()))
-                    .build();
-            DataStream<BehaviorRule> ruleChanges = execution.fromSource(
-                            rulesSource, WatermarkStrategy.noWatermarks(), "KafkaBehaviorRulesSource")
-                    .uid("kafka-behavior-rules-source");
-            DataStream<BehaviorAlert> alerts = onTime
-                    .keyBy(UserBehaviorEvent::getUserId)
-                    .connect(ruleChanges.broadcast(CartAbandonmentRuleProcessor.RULES_STATE))
-                    .process(new CartAbandonmentRuleProcessor())
-                    .name("ApplyBroadcastBehaviorRules")
-                    .uid("apply-broadcast-behavior-rules");
-            alerts.sinkTo(
-                            ClickHouseSinkFactory.createBehaviorAlertSink(
-                                    clickHouseEndpoint,
-                                    clickHouseUser,
-                                    clickHousePassword,
-                                    clickHouseDatabase,
-                                    "behavior_alerts"))
-                    .name("WriteBehaviorAlerts")
-                    .uid("write-behavior-alerts");
-        }
+        acceptedUnique
+                .keyBy(UserBehaviorEvent::getUserId)
+                .process(new ActiveCartProjector())
+                .name("ProjectUserActiveCart")
+                .uid("project-user-active-cart")
+                .addSink(new RedisActiveCartSink(configuration.redisConfig()))
+                .name("WriteUserActiveCart")
+                .uid("write-user-active-cart");
 
         execution.execute("Taobao Real-Time Customer Behavior Platform");
     }

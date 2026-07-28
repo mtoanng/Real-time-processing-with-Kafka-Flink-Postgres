@@ -1,49 +1,26 @@
 SHELL := bash
 
-.PHONY: checks test package infra-config remote-up remote-down schema publish-fixture run-job checkpoint-experiment terraform-validate teardown
+.PHONY: checks start replay verify recovery-test stop
 
-checks: test package infra-config terraform-validate
-
-test:
+checks:
 	PYTHONPATH=producer/src python -m unittest discover -s producer/tests -v
 	ruff check producer scripts
 	ruff format --check producer scripts
 	mvn -B test
+	mvn -B -pl flink-jobs/taobao-stream-job -am package -DskipTests
+	docker compose -f infra/docker-compose.yml config --quiet
 
-package:
-	mvn -B -pl flink-jobs/taobao-stream-job -am package
+start:
+	bash scripts/start.sh
 
-infra-config:
-	docker compose -f infra/docker-compose.yml --profile core config --quiet
-	docker compose -f infra/docker-compose.yml --profile serving config --quiet
-	docker compose -f infra/docker-compose.yml --profile cdc config --quiet
-	docker compose -f infra/docker-compose.yml --profile observability config --quiet
-
-remote-up:
-	bash scripts/run.sh
-
-remote-down:
-	bash scripts/stop.sh
-
-schema:
-	bash scripts/register_schemas.sh
-
-publish-fixture:
+replay:
 	bash scripts/replay.sh
 
-run-job:
-	bash scripts/run_flink.sh
+verify:
+	PYTHONPATH=producer/src python scripts/verify.py
 
-lookup-user:
-	bash scripts/lookup_active_cart.sh $(USER_ID)
+recovery-test:
+	bash scripts/recovery_test.sh
 
-checkpoint-experiment:
-	bash scripts/run_checkpoint_experiment.sh
-
-terraform-validate:
-	terraform -chdir=infra/terraform fmt -check
-	terraform -chdir=infra/terraform init -backend=false -input=false
-	terraform -chdir=infra/terraform validate
-
-teardown:
-	bash scripts/teardown_demo.sh
+stop:
+	bash scripts/stop.sh

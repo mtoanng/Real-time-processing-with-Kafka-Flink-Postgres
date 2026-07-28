@@ -3,7 +3,6 @@ package com.taobao.behavior.sink;
 import com.clickhouse.data.ClickHouseDataType;
 import com.clickhouse.data.ClickHouseFormat;
 import com.taobao.behavior.avro.UserBehaviorEvent;
-import com.taobao.behavior.model.BehaviorAlert;
 import com.taobao.behavior.model.ItemMetrics1m;
 import com.taobao.behavior.model.StreamQualityEvent;
 import java.util.List;
@@ -62,25 +61,6 @@ public final class ClickHouseSinkFactory {
                 table,
                 StreamQualityEvent.class,
                 new QualityEventMapper(),
-                100,
-                2,
-                1_000);
-    }
-
-    public static Sink<BehaviorAlert> createBehaviorAlertSink(
-            String endpoint,
-            String user,
-            String password,
-            String database,
-            String table) {
-        return createSink(
-                endpoint,
-                user,
-                password,
-                database,
-                table,
-                BehaviorAlert.class,
-                new BehaviorAlertMapper(),
                 100,
                 2,
                 1_000);
@@ -199,27 +179,4 @@ public final class ClickHouseSinkFactory {
         }
     }
 
-    private static final class BehaviorAlertMapper extends DataMapper<BehaviorAlert> {
-        @Override
-        public void toMap(BehaviorAlert alert, Map<String, Object> out) {
-            out.putAll(ClickHouseRowMapper.alertValues(alert));
-        }
-
-        @Override
-        public List<ColumnBinding> bindings() {
-            return List.of(
-                    ColumnBinding.scalar("event_id", "event_id", ClickHouseDataType.String),
-                    ColumnBinding.scalar("replay_run_id", "replay_run_id", ClickHouseDataType.String),
-                    ColumnBinding.scalar("user_id", "user_id", ClickHouseDataType.UInt64),
-                    ColumnBinding.scalar("item_id", "item_id", ClickHouseDataType.UInt64),
-                    ColumnBinding.scalar("category_id", "category_id", ClickHouseDataType.UInt64),
-                    ColumnBinding.dateTime64("event_time", "event_time", 3),
-                    ColumnBinding.dateTime64("alert_time", "alert_time", 3),
-                    ColumnBinding.scalar("rule_id", "rule_id", ClickHouseDataType.String),
-                    ColumnBinding.scalar("rule_version", "rule_version", ClickHouseDataType.UInt64),
-                    ColumnBinding.scalar("reason_code", "reason_code", ClickHouseDataType.String),
-                    ColumnBinding.scalar("reason_message", "reason_message", ClickHouseDataType.String),
-                    ColumnBinding.scalar("record_version", "record_version", ClickHouseDataType.UInt64));
-        }
-    }
 }

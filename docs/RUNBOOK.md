@@ -1,88 +1,71 @@
 # Runbook
 
-## Prerequisites
+Run the complete composition only on a disposable host with Docker, Java 11+,
+Maven, Python 3.11+, `curl`, and enough memory for Kafka, Flink, ClickHouse,
+Schema Registry, and Redis.
 
-- Python 3.11+ and the `kafka` optional dependencies
-- Java 11
-- Maven 3.9+
-- Docker Compose v2
-- Flink CLI 1.20.2 when submitting to the local Compose cluster
-- Terraform 1.9+ for static infrastructure validation
+## Checks
 
-Do not run the complete stack on the constrained laptop. Use a disposable host.
-
-## Credential-independent checks
+Prediction: 22 Python tests and 33 Java tests pass; the shaded JAR packages and
+the single Compose model renders.
 
 ```bash
-PYTHONPATH=producer/src python -m unittest discover -s producer/tests -v
-ruff check producer scripts
-ruff format --check producer scripts
-mvn -B -pl flink-jobs/taobao-stream-job -am package
-docker compose -f infra/docker-compose.yml --profile core config --quiet
-docker compose -f infra/docker-compose.yml --profile serving config --quiet
-# Deprecated legacy compatibility render only; not a release target.
-docker compose -f infra/docker-compose.yml --profile cdc config --quiet
-docker compose -f infra/docker-compose.yml --profile observability config --quiet
-terraform -chdir=infra/terraform init -backend=false -input=false
-terraform -chdir=infra/terraform fmt -check -recursive
-terraform -chdir=infra/terraform validate
+make checks
 ```
 
-## Fresh core demo
-
-Use a fresh ClickHouse volume/database because schema bootstrap is deliberately
-non-destructive and does not alter legacy tables.
+## Start, replay, and verify
 
 ```bash
 cp .env.example .env
-set -a; source .env; set +a
-RUNTIME_PROFILE=core bash scripts/run.sh
-PYTHONPATH=producer/src python scripts/apply_clickhouse_schema.py
-bash scripts/register_schemas.sh
-mvn -B -pl flink-jobs/taobao-stream-job -am package
-FLINK_DETACHED=true bash scripts/run_flink.sh
-bash scripts/run_replay_identity_experiment.sh
+make start
+make replay
+make verify
 ```
 
-## Deprecated legacy CDC
+`make start` packages the job, starts the six runtime services, and registers
+the Avro schema. `make replay` publishes `golden-a,golden-b` before submitting
+the bounded Kafka source so end-of-input advances the final watermark.
 
-The checked-in `cdc` profile exists only to keep the old `behavior_rules`
-implementation isolated and compilable. Do not use it as the target
-architecture for this release. Product Catalog CDC Enrichment is **NOT
-IMPLEMENTED** and has no run command in this runbook.
+`make verify` requires exact equality with the committed golden contract for:
 
-## Serving
+- 11 canonical raw business rows;
+- five metric keys and values;
+- two invalid, eleven duplicate, and one late quality identities;
+- user 1 cart `{101: "11|1511658004000|1511658005000"}`;
+- user 2 empty cart;
+- a positive bounded TTL on every existing cart key.
 
-Set `RUNTIME_PROFILE=serving` and configure a local or managed Redis-compatible
-endpoint with `REDIS_HOST`, `REDIS_PORT`, optional ACL credentials/TLS, key
-prefix, and cart TTL. Then:
+## Recovery experiment
+
+This is a controlled failure and must run on a disposable host. First capture
+an uninterrupted snapshot, then repeat the same bounded input with
+`KAFKA_SOURCE_BOUNDED=false`, a short checkpoint interval, and a running job.
+After one checkpoint completes:
 
 ```bash
-bash scripts/run.sh
-FLINK_DETACHED=true bash scripts/run_flink.sh
-bash scripts/run_replay_identity_experiment.sh
+RECOVERY_TEST_CONFIRM=YES \
+FLINK_JOB_ID=<job-id> \
+BASELINE_SNAPSHOT=artifacts/uninterrupted.json \
+make recovery-test
 ```
 
-## Recovery
+The script restarts the TaskManager, waits for the job to return to `RUNNING`,
+captures canonical raw/metric/quality/cart state, and requires exact equality
+with the uninterrupted snapshot. Until that command succeeds with real
+services, recovery is `NOT VERIFIED`.
 
-Follow the printed two-environment workflow:
+## Controlled failure experiment
+
+Set `FLINK_MAX_OUT_OF_ORDERNESS_MS=0`, rerun from clean disposable volumes, and
+predict which fixture rows become late before executing. The canonical raw
+count must remain unchanged while metric and late-quality results change.
+Restore the default `5000` afterward.
+
+## Stop
 
 ```bash
-bash scripts/run_checkpoint_experiment.sh
+make stop
 ```
 
-The recovery environment requires `curl`, `jq`, `FLINK_REST_URL`,
-`FLINK_JOB_ID`, a persistent checkpoint path, and a failure command that
-restarts a TaskManager without cancelling the job.
-
-## Teardown
-
-Inspect the Compose project, then stop it:
-
-```bash
-docker compose -f infra/docker-compose.yml ps
-bash scripts/stop.sh
-```
-
-Only use `bash scripts/stop.sh --volumes` when local ClickHouse, checkpoint,
-Redis, and PostgreSQL data may be discarded.
+This stops containers but preserves named volumes. Remove volumes only as a
+separate, explicitly approved disposable-host cleanup.

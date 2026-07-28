@@ -2,17 +2,35 @@ package com.taobao.behavior.model;
 
 import java.io.Serializable;
 
-public class CartMutation implements Serializable {
-    public enum Type { UPSERT_CART_ITEM, DELETE_CART_ITEM }
+public final class CartMutation implements Serializable {
+    public enum Type { UPSERT, DELETE }
 
     private final Type type;
-    private final ActiveCartItem item;
+    private final long userId;
+    private final long itemId;
+    private final long categoryId;
+    private final long addedAtMs;
+    private final long lastUpdatedAtMs;
 
-    public CartMutation(Type type, ActiveCartItem item) {
+    public CartMutation(
+            Type type,
+            long userId,
+            long itemId,
+            long categoryId,
+            long addedAtMs,
+            long lastUpdatedAtMs) {
         this.type = type;
-        this.item = item;
+        this.userId = userId;
+        this.itemId = itemId;
+        this.categoryId = categoryId;
+        this.addedAtMs = addedAtMs;
+        this.lastUpdatedAtMs = lastUpdatedAtMs;
     }
 
     public Type getType() { return type; }
-    public ActiveCartItem getItem() { return item; }
+    public long getUserId() { return userId; }
+    public long getItemId() { return itemId; }
+    public long getCategoryId() { return categoryId; }
+    public long getAddedAtMs() { return addedAtMs; }
+    public long getLastUpdatedAtMs() { return lastUpdatedAtMs; }
 }

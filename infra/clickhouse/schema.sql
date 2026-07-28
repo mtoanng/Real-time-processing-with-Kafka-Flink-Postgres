@@ -100,28 +100,3 @@ SELECT
     reason_message,
     observed_at
 FROM taobao_behavior.stream_quality_events FINAL;
-
--- Deprecated legacy CDC/timer output. It is not part of core quality
--- accounting or the current release target.
-CREATE TABLE IF NOT EXISTS taobao_behavior.behavior_alerts (
-    event_id String,
-    replay_run_id String,
-    user_id UInt64,
-    item_id UInt64,
-    category_id UInt64,
-    event_time DateTime64(3, 'UTC'),
-    alert_time DateTime64(3, 'UTC'),
-    rule_id String,
-    rule_version UInt64,
-    reason_code LowCardinality(String),
-    reason_message String,
-    record_version UInt64,
-    ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
-)
-ENGINE = ReplacingMergeTree(record_version)
-PARTITION BY toYYYYMM(alert_time)
-ORDER BY (event_id, rule_id, rule_version);
-
-CREATE VIEW IF NOT EXISTS taobao_behavior.behavior_alerts_canonical AS
-SELECT * EXCEPT record_version
-FROM taobao_behavior.behavior_alerts FINAL;

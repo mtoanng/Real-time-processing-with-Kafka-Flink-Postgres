@@ -1,6 +1,6 @@
 package com.taobao.behavior.sink;
 
-import com.taobao.behavior.model.ActiveCartItem;
+import com.taobao.behavior.model.CartMutation;
 
 public final class RedisCartCodec {
     private RedisCartCodec() {}
@@ -12,7 +12,7 @@ public final class RedisCartCodec {
         return Long.toString(itemId);
     }
 
-    public static String encode(ActiveCartItem item) {
+    public static String encode(CartMutation item) {
         if (item == null
                 || item.getCategoryId() <= 0L
                 || item.getAddedAtMs() < 0L

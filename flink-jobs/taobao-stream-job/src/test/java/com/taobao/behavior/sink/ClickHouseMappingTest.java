@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.taobao.behavior.EventTestSupport;
 import com.taobao.behavior.avro.BehaviorType;
-import com.taobao.behavior.model.BehaviorAlert;
 import com.taobao.behavior.model.ItemMetrics1m;
 import com.taobao.behavior.model.StreamQualityEvent;
 import java.time.ZonedDateTime;
@@ -49,7 +48,7 @@ class ClickHouseMappingTest {
     }
 
     @Test
-    void mapsAuditAndAlertContextToDurableColumns() {
+    void mapsQualityContextToDurableColumns() {
         StreamQualityEvent quality = StreamQualityEvent.fromEvent(
                 EventTestSupport.event(
                         100L, 500L, 50L, BehaviorType.cart, 1_511_658_000_000L, 7L, "run-3"),
@@ -63,21 +62,5 @@ class ClickHouseMappingTest {
         assertEquals("LATE_FOR_AGGREGATION", auditRow.get("reason_code"));
         assertEquals(1_511_658_060_000L, auditRow.get("record_version"));
         assertEquals(1_511_658_000_000L, auditRow.get("event_time"));
-
-        BehaviorAlert alert = new BehaviorAlert(
-                "cart-abandonment:event-7:1:1511658060000",
-                "run-3",
-                100L,
-                500L,
-                50L,
-                1_511_658_000_000L,
-                1_511_658_060_000L,
-                "cart_abandonment",
-                1L);
-        Map<String, Object> alertRow = ClickHouseRowMapper.alertValues(alert);
-
-        assertEquals("CART_ABANDONMENT", alertRow.get("reason_code"));
-        assertEquals("run-3", alertRow.get("replay_run_id"));
-        assertEquals(1_511_658_060_000L, alertRow.get("record_version"));
     }
 }

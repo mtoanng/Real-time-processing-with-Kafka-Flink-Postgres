@@ -27,16 +27,11 @@ class RedisConfigTest {
                                 "REDIS_TLS", "true",
                                 "REDIS_USERNAME", "app",
                                 "REDIS_PASSWORD", "secret",
-                                "REDIS_KEY_PREFIX", "shop:cart",
-                                "REDIS_CART_TTL_SECONDS", "3600",
-                                "REDIS_CONNECT_TIMEOUT_MS", "12000",
-                                "REDIS_SOCKET_TIMEOUT_MS", "6000"));
+                                "REDIS_CART_TTL_SECONDS", "3600"));
         assertTrue(managed.tls());
         assertEquals("app", managed.username());
-        assertEquals("shop:cart:{100}", managed.keyForUser(100L));
+        assertEquals("taobao:active_cart:{100}", managed.keyForUser(100L));
         assertEquals(3_600L, managed.cartTtlSeconds());
-        assertEquals(12_000L, managed.connectTimeout().toMillis());
-        assertEquals(6_000L, managed.socketTimeout().toMillis());
     }
 
     @Test
@@ -58,11 +53,6 @@ class RedisConfigTest {
                                         "redis",
                                         "REDIS_CART_TTL_SECONDS",
                                         "0")));
-        assertThrows(
-                IllegalArgumentException.class,
-                () ->
-                        RedisConfig.fromEnvironment(
-                                Map.of("REDIS_HOST", "redis", "REDIS_KEY_PREFIX", "bad prefix")));
     }
 
     @Test

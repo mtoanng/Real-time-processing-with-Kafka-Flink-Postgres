@@ -1,7 +1,6 @@
 package com.taobao.behavior.sink;
 
 import com.taobao.behavior.avro.UserBehaviorEvent;
-import com.taobao.behavior.model.BehaviorAlert;
 import com.taobao.behavior.model.ItemMetrics1m;
 import com.taobao.behavior.model.StreamQualityEvent;
 import java.time.Instant;
@@ -58,23 +57,6 @@ final class ClickHouseRowMapper {
         row.put("reason_message", event.getReasonMessage());
         row.put("observed_at", utcTime(event.getObservedAt()));
         row.put("record_version", event.getObservedAt());
-        return row;
-    }
-
-    static Map<String, Object> alertValues(BehaviorAlert alert) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("event_id", alert.getEventId());
-        row.put("replay_run_id", alert.getReplayRunId());
-        row.put("user_id", alert.getUserId());
-        row.put("item_id", alert.getItemId());
-        row.put("category_id", alert.getCategoryId());
-        row.put("event_time", utcTime(alert.getCartEventTimeMs()));
-        row.put("alert_time", utcTime(alert.getAlertTimeMs()));
-        row.put("rule_id", alert.getRuleId());
-        row.put("rule_version", alert.getRuleVersion());
-        row.put("reason_code", alert.getReasonCode());
-        row.put("reason_message", alert.getReasonMessage());
-        row.put("record_version", alert.getAlertTimeMs());
         return row;
     }
 

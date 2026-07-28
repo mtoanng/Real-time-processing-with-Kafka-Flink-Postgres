@@ -30,7 +30,7 @@ class ClickHouseDdlContractTest {
         assertTrue(ddl.contains("stream_quality_events"));
         assertTrue(ddl.contains("quality_type LowCardinality(String)"));
         assertTrue(ddl.contains("quality_event_id String"));
-        assertTrue(ddl.contains("behavior_alerts"));
+        assertFalse(ddl.contains("behavior_alerts"));
         assertTrue(ddl.contains("reason_code LowCardinality(String)"));
         assertTrue(ddl.contains("reason_message String"));
         assertTrue(ddl.contains("FROM taobao_behavior.raw_behavior_events FINAL"));

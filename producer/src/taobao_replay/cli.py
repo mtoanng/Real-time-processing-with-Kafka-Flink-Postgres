@@ -12,26 +12,13 @@ from typing import IO
 
 from taobao_replay.contracts import UserBehaviorEvent
 from taobao_replay.kafka import DEFAULT_TOPIC, KafkaEventPublisher, build_schema_registry_producer
-from taobao_replay.profile import profile_file
 from taobao_replay.reader import ParseIssue
 from taobao_replay.replay import replay_file
-from taobao_replay.source_audit import DatasetContractError, audit_source_dataset
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="taobao-replay")
     subparsers = parser.add_subparsers(dest="command", required=True)
-
-    profile_parser = subparsers.add_parser("profile", help="profile a CSV with bounded memory")
-    profile_parser.add_argument("input", type=Path)
-    profile_parser.add_argument("--batch-size", type=int, default=10_000)
-
-    audit_parser = subparsers.add_parser(
-        "source-audit", help="verify a raw Tianchi source and its acquisition manifest"
-    )
-    audit_parser.add_argument("input", type=Path)
-    audit_parser.add_argument("--manifest", type=Path, required=True)
-    audit_parser.add_argument("--batch-size", type=int, default=10_000)
 
     replay_parser = subparsers.add_parser("replay", help="replay accepted rows to JSONL")
     replay_parser.add_argument("input", type=Path)
@@ -104,21 +91,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     _validate_input(parser, args.input)
 
     try:
-        if args.command == "profile":
-            print(
-                json.dumps(profile_file(args.input, batch_size=args.batch_size).to_dict(), indent=2)
-            )
-            return 0
-
-        if args.command == "source-audit":
-            audit = audit_source_dataset(
-                args.input,
-                args.manifest,
-                batch_size=args.batch_size,
-            )
-            print(json.dumps(audit.to_dict(), indent=2))
-            return 0
-
         if args.command == "publish":
             _validate_outputs(
                 parser,
@@ -188,6 +160,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         print(json.dumps(asdict(stats), sort_keys=True), file=sys.stderr)
         return 0
-    except (DatasetContractError, OSError, RuntimeError, ValueError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         parser.error(str(exc))
     return 2
