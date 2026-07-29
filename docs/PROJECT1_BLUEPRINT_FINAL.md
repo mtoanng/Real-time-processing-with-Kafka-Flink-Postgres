@@ -1,42 +1,35 @@
-# Active blueprint: minimal event-time streaming core
+# Active Project 1 blueprint
 
-This file is the source of truth for implementation scope. The current phase is
-the semantic-preserving repository simplification explicitly authorized on
-`refactor/redis_store_migration`.
+The approved authoring strategy is SQL/Python-first. "No Java" means the Data
+Engineer does not author business pipelines in Java; JVM runtimes, drivers,
+connector JARs and genuinely minimal platform adapters are allowed.
 
-## Architecture
+## Release architecture
+
+Core:
 
 ```text
-raw Taobao rows -> Python replay -> Kafka Avro + Schema Registry
--> one Java Flink DataStream job
--> ClickHouse canonical raw, one-minute metrics, and quality
--> Redis/Valkey active-cart projection
+Taobao -> Python -> Kafka/Avro -> one SQL/PyFlink Flink job
+-> ClickHouse canonical raw/metrics/quality
+-> Redis active-cart serving projection
 ```
 
-The runtime contains Kafka, Schema Registry, ClickHouse, Redis, and one Flink
-JobManager/TaskManager pair. Checks start no services. There are no optional
-application profiles.
+Approved, isolated extensions:
 
-## Required semantics
+```text
+HTTP -> same Kafka behavior contract
+PostgreSQL product_catalog -> Debezium -> Kafka -> same Flink artifact
+-> ClickHouse current catalog
+API -> Redis carts + ClickHouse metrics/current-catalog query
+```
 
-- Event identity is SHA-256 of the five source fields plus source sequence;
-  replay run ID is lineage only.
-- Semantic validation precedes bounded event-ID deduplication.
-- Accepted unique events always reach canonical raw.
-- Events at or behind the watermark create late evidence and skip metrics.
-- Metric identity is `(window_start, item_id, source_category_id)`.
-- ClickHouse canonical views are logically duplicate-free without waiting for
-  merges.
-- Redis stores only bounded-TTL, user-keyed active carts; cart upserts and buy
-  deletes with stale-transition protection.
-- Checkpoints coordinate Flink state and Kafka offsets. External sinks converge
-  through deterministic IDs and logical keys; there is no global transaction.
+Catalog is current-state replication, not temporal enrichment. It cannot alter
+behavior identity, canonical raw, or source-category metrics.
 
-The exact accounting equations and golden outputs are defined in
-`docs/SEMANTICS.md` and `tests/fixtures/golden_outputs.json`.
+SQL owns relational validation, table contracts, windows, aggregation and
+catalog changelog handling. PyFlink DataStream owns event-ID state TTL,
+duplicate/late evidence, watermarks and active-cart transitions. Connector JARs
+and Kafka/ClickHouse/Redis adapters are platform boundaries.
 
-## Delivery gate
-
-Codebase verification requires Python tests, Java tests/package, schema
-contracts, and Compose rendering. Live runtime and recovery claims remain
-`NOT VERIFIED` until the commands in `docs/RUNBOOK.md` produce real evidence.
+The Java DataStream implementation is rollback-only migration evidence. Remove
+it only after a live repeated-replay and checkpoint-restoration parity run.

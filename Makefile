@@ -1,14 +1,15 @@
-SHELL := bash
-
 .PHONY: checks start replay verify recovery-test stop
+SHELL := bash
 
 checks:
 	PYTHONPATH=producer/src python -m unittest discover -s producer/tests -v
-	ruff check producer scripts
-	ruff format --check producer scripts
+	ruff check producer scripts flink-python-pipeline
+	ruff format --check producer scripts flink-python-pipeline
+	python -m compileall -q producer/src scripts flink-python-pipeline
 	mvn -B test
-	mvn -B -pl flink-jobs/taobao-stream-job -am package -DskipTests
-	docker compose -f infra/docker-compose.yml config --quiet
+	mvn -B package -DskipTests
+	docker compose -f infra/docker-compose.yml --profile core config --quiet
+	docker compose -f infra/docker-compose.yml --profile core --profile catalog --profile api config --quiet
 
 start:
 	bash scripts/start.sh

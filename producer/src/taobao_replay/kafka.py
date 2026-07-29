@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
@@ -128,6 +129,7 @@ class KafkaEventPublisher:
         self._producer = producer
         self._topic = topic
         self._delivery_errors: list[str] = []
+        self._lock = threading.Lock()
 
     def publish(self, event: UserBehaviorEvent) -> None:
         def delivered(error: object, _message: object) -> None:
@@ -141,6 +143,12 @@ class KafkaEventPublisher:
             on_delivery=delivered,
         )
         self._producer.poll(0)
+
+    def publish_confirmed(self, event: UserBehaviorEvent, timeout: float = 10.0) -> None:
+        """Publish one HTTP-ingress event and wait for Kafka acknowledgement."""
+        with self._lock:
+            self.publish(event)
+            self.close(timeout)
 
     def close(self, timeout: float = 30.0) -> None:
         remaining = self._producer.flush(timeout)

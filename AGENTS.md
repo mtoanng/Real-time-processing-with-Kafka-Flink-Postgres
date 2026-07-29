@@ -38,13 +38,9 @@ The replay engine must consume raw event rows and perform transformations downst
 
 ## Delivery priority
 
-The priority order is:
-
-1. make Milestone A run end to end;
-2. complete Milestone B for the junior Definition of Done;
-3. implement Milestone C only when explicitly requested.
-
-Do not add PostgreSQL/Debezium, cart timers, advanced observability, or scale tuning before the Kafka -> Flink -> ClickHouse core works.
+The current approved migration is SQL/Python-first and includes the separately
+approved HTTP and product-catalog CDC extension. Do not restore behavior rules,
+cart timers, alert logic, enrichment, or unrelated technologies.
 
 ## Working mode
 
@@ -103,31 +99,33 @@ Reason:
 ## Locked architecture
 
 ```text
-Taobao -> Python replay -> Kafka/Schema Registry -> one Java Flink job
-        -> ClickHouse
-        -> optional Valkey/Redis active-cart serving profile
-        -> deprecated behavior-rule CDC artifacts isolated from core
+Taobao -> Python/HTTP -> Kafka/Schema Registry -> one SQL/PyFlink Flink job
+        -> ClickHouse canonical raw/metrics/quality
+        -> Redis active-cart serving projection
+
+PostgreSQL product_catalog -> Debezium -> isolated Kafka topic
+        -> non-enriching branch in the same Flink job
+        -> ClickHouse canonical current catalog
 ```
 
 Rules:
 
-- Python owns dataset preparation and replay.
-- Java owns the Flink DataStream core.
+- Python owns replay, stateful custom logic, orchestration and verification.
+- SQL owns relational stream transformations.
+- Java/JVM is allowed for runtime, drivers and minimal platform adapters, but
+  Data Engineers do not author business pipeline logic in Java.
 - ClickHouse stores analytical history and rollups.
-- Valkey/Redis stores bounded per-user active-cart hot state only and is
-  optional under `serving`; local and managed endpoints share one
-  business-logic path.
-- The existing PostgreSQL/Debezium `behavior_rules` branch is deprecated
-  legacy code, not the target CDC architecture and not part of the core
-  release target.
-- A separately approved future phase will replace, not coexist with, that
-  branch using `product_catalog` CDC and current-state enrichment. Product CDC
-  is not implemented or verified in the current phase.
+- Redis stores bounded per-user active-cart hot state only.
+- Product catalog CDC is isolated current-state replication. It does not enrich
+  behavior history or change the source-category metric grain.
+- `behavior_rules`, Broadcast State, cart timers and alerts are not active
+  architecture.
 - Confluent Cloud provides Kafka and Schema Registry for final cloud E2E; do not
   add Amazon MSK or self-hosted Kafka to the final topology.
 - Do not add Spark, Airflow, MongoDB, Cassandra, Elasticsearch, Kubernetes, ML,
   recommendation, arbitrary SQL APIs, or another serving database.
-- Do not convert the Java Flink job to PyFlink.
+- Keep the former Java job only as rollback evidence until live parity is
+  proven; new business logic belongs in SQL/PyFlink.
 
 ## Resource limits
 

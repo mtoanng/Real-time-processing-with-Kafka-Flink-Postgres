@@ -1,0 +1,139 @@
+-- Kafka/Avro input. Avro decoding remains a JVM connector capability; no Java
+-- business pipeline is authored by the Data Engineer.
+CREATE TABLE behavior_events (
+    event_id STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    behavior_type STRING,
+    event_time_ms BIGINT,
+    source_sequence BIGINT,
+    replay_run_id STRING
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{BEHAVIOR_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'properties.group.id' = '{{CONSUMER_GROUP}}-behavior',
+    'scan.startup.mode' = 'earliest-offset',
+    {{BEHAVIOR_BOUNDED_OPTION}}
+    'value.format' = 'avro-confluent',
+    'value.avro-confluent.url' = '{{SCHEMA_REGISTRY_URL}}'{{SOURCE_SECURITY_OPTIONS}}
+);
+
+-- Raw Debezium envelope is decoded by the built-in debezium-json format.
+-- PostgreSQL forbids physical deletes; is_active=false is the domain delete.
+CREATE TABLE product_catalog_changes (
+    product_id BIGINT,
+    category_id BIGINT,
+    product_name STRING,
+    price DECIMAL(12, 2),
+    is_active BOOLEAN,
+    updated_at TIMESTAMP_LTZ(3),
+    catalog_version BIGINT,
+    PRIMARY KEY (product_id) NOT ENFORCED
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{CATALOG_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'properties.group.id' = '{{CONSUMER_GROUP}}-catalog',
+    'scan.startup.mode' = 'earliest-offset',
+    {{CATALOG_BOUNDED_OPTION}}
+    'format' = 'debezium-json',
+    'debezium-json.schema-include' = 'false',
+    'debezium-json.ignore-parse-errors' = 'false'{{KAFKA_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE raw_events_out (
+    event_id STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    behavior_type STRING,
+    event_time_ms BIGINT,
+    source_sequence BIGINT,
+    replay_run_id STRING,
+    record_version BIGINT
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{RAW_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE metrics_out (
+    window_start STRING,
+    item_id BIGINT,
+    source_category_id BIGINT,
+    pv_count BIGINT,
+    cart_count BIGINT,
+    fav_count BIGINT,
+    buy_count BIGINT,
+    unique_users BIGINT,
+    replay_run_id STRING,
+    record_version BIGINT
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{METRICS_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE quality_events_out (
+    quality_event_id STRING,
+    quality_type STRING,
+    event_id STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    behavior_type STRING,
+    event_time_ms BIGINT,
+    replay_run_id STRING,
+    source_sequence BIGINT,
+    reason_code STRING,
+    reason_message STRING,
+    observed_at_ms BIGINT,
+    record_version BIGINT
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{QUALITY_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE product_catalog_out (
+    product_id BIGINT,
+    category_id BIGINT,
+    product_name STRING,
+    price DECIMAL(12, 2),
+    is_active BOOLEAN,
+    updated_at_ms BIGINT,
+    catalog_version BIGINT,
+    PRIMARY KEY (product_id) NOT ENFORCED
+) WITH (
+    'connector' = 'upsert-kafka',
+    'topic' = '{{CATALOG_OUTPUT_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'key.format' = 'json',
+    'value.format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE cart_mutations_out (
+    operation STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    added_at_ms BIGINT,
+    last_updated_at_ms BIGINT,
+    PRIMARY KEY (user_id, item_id) NOT ENFORCED
+) WITH (
+    'connector' = 'upsert-kafka',
+    'topic' = '{{CART_MUTATION_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'key.format' = 'json',
+    'value.format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);

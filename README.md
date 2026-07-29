@@ -1,42 +1,43 @@
-# Taobao event-time streaming core
+# Taobao Python-SQL streaming platform
 
-This repository demonstrates five mechanisms: contract, identity, state, event
-time, and materialized outputs.
+Project 1 is a recoverable event-time pipeline whose Data Engineer authoring
+surface is Python and SQL. Flink still runs on the JVM and uses packaged JVM
+connectors; that is intentionally different from authoring business logic in
+Java.
 
 ```text
-Taobao UserBehavior.csv rows
-  -> deterministic Python replay
-  -> Kafka Avro + Schema Registry
-  -> one Java Flink DataStream job
-       -> validation -> bounded event_id deduplication
-       -> watermarks -> late classification -> one-minute metrics
-       -> active-cart transitions
-  -> ClickHouse canonical history, metrics, and quality
-  -> Redis/Valkey bounded active-cart state
+Taobao fixture -> Python replay or thin HTTP boundary
+-> Kafka Avro + Schema Registry
+-> one SQL/PyFlink Flink job
+   -> ClickHouse canonical raw events, 1-minute metrics, quality events
+   -> compacted cart mutations -> Python adapter -> Redis active cart
+
+PostgreSQL product_catalog -> Debezium -> compacted Kafka topic
+-> non-enriching branch in the same Flink job
+-> ClickHouse canonical current catalog
 ```
 
-Python validates raw five-column source rows and creates stable event IDs.
-Kafka and Schema Registry form the transport contract. Flink owns stream
-semantics and recovery state. ClickHouse owns analytical history. Redis owns
-only the rebuildable current cart for each user.
+The catalog branch never changes source-faithful raw behavior or the metric
+grain `(window_start, item_id, source_category_id)`. The API reads Redis carts
+and joins canonical ClickHouse metrics to current catalog metadata.
 
-## Read this first
+## Profiles
 
-- [Stream semantics](docs/SEMANTICS.md)
-- [Runbook](docs/RUNBOOK.md)
-- [Active blueprint](docs/PROJECT1_BLUEPRINT_FINAL.md)
+- `checks`: Python/Java contract tests, package, lint and Compose rendering;
+  no service connections.
+- `core`: Kafka, Schema Registry, one Flink job, ClickHouse, Redis and the thin
+  Redis materializer.
+- `catalog`: optional PostgreSQL/Debezium catalog source; use together with
+  `core`.
+- `api`: optional HTTP ingress/query boundary; use together with `core`.
 
-The committed 12-row fixture is
-`tests/fixtures/user_behavior_fixture.csv`. Its manually declared exact output
-is `tests/fixtures/golden_outputs.json`.
+The former Java DataStream job remains a non-active rollback implementation
+until live SQL/PyFlink parity and checkpoint restoration are proven. New
+business behavior must be authored in `flink-python-pipeline/`, not Java.
 
-## Quick start
-
-Use a disposable runtime host; the complete stack is not intended for a
-resource-constrained laptop.
+## Checks and local core
 
 ```bash
-cp .env.example .env
 make checks
 make start
 make replay
@@ -44,30 +45,33 @@ make verify
 make stop
 ```
 
-`make replay` publishes the fixture as `golden-a` and `golden-b`, then submits
-one bounded Flink execution. The second attempt has the same event IDs and is
-classified as duplicate within the configured state-retention horizon.
+The Flink Python image is intentionally not built during `make checks`; it is
+large and requires a disposable runtime host. The committed ClickHouse Kafka
+Engine queues target the local broker; secure Confluent Cloud-to-ClickHouse
+ingestion remains a documented deployment gate, not a verified claim. Catalog:
 
-## Materialized outputs
+```bash
+docker compose -f infra/docker-compose.yml --profile core --profile catalog up -d
+POSTGRES_PASSWORD=local-catalog python -m scripts.register_connector
+```
 
-| Responsibility | Canonical output |
-| --- | --- |
-| Accepted unique history | `raw_behavior_events_canonical` |
-| One-minute item/category metrics | `item_metrics_1m_canonical` |
-| Invalid, duplicate, and late evidence | `stream_quality_events_canonical` |
-| Current cart | Redis Hash `taobao:active_cart:{user_id}` |
+HTTP replay:
 
-The ClickHouse views use `FINAL`, so consumer results do not wait for background
-replacement merges.
+```bash
+docker compose -f infra/docker-compose.yml --profile core --profile api up -d api
+PYTHONPATH=producer/src python -m taobao_replay http \
+  tests/fixtures/user_behavior_fixture.csv --run-id http-a
+```
 
-## Verification status
+Canonical reads use `raw_behavior_events_canonical`,
+`item_metrics_1m_canonical`, `stream_quality_events_canonical`, and
+`product_catalog_current_canonical`. They use ClickHouse `FINAL`; ordinary
+table reads are not immediately duplicate-free.
 
-The credential-independent Python and Java suites verify event identity, Avro,
-validation, deduplication, watermarks/lateness, exact metrics, canonical
-ClickHouse keys, cart convergence, TTL configuration, checkpoint policy,
-Compose rendering, and packaging.
+Checkpoint-consistent Flink state/Kafka offsets plus deterministic output keys
+provide recoverable, effectively-once canonical results. This is not a global
+transaction and not end-to-end exactly once.
 
-Live Kafka/Flink/ClickHouse/Redis output and checkpoint recovery remain
-`NOT VERIFIED` until `make replay`, `make verify`, and `make recovery-test`
-complete on a real disposable runtime host. This platform does not claim
-cross-system transactional exactly-once delivery.
+Status: credential-independent checks are the CODEBASE gate. Full Kafka/Flink/
+ClickHouse/Redis execution, catalog convergence, and failure recovery remain
+`NOT VERIFIED` until real evidence is captured.

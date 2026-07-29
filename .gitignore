@@ -79,4 +79,3 @@ infra/terraform/*.tfvars
 *.tmp
 *.bak
 nul
-docs/

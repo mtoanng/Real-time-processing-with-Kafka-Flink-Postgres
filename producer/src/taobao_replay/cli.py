@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import IO
 
 from taobao_replay.contracts import UserBehaviorEvent
+from taobao_replay.http import HttpEventPublisher
 from taobao_replay.kafka import DEFAULT_TOPIC, KafkaEventPublisher, build_schema_registry_producer
 from taobao_replay.reader import ParseIssue
 from taobao_replay.replay import replay_file
@@ -50,6 +51,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     publish_parser.add_argument("--invalid-output")
     publish_parser.add_argument("--force", action="store_true")
+
+    http_parser = subparsers.add_parser(
+        "http", help="replay accepted rows through the approved thin HTTP boundary"
+    )
+    http_parser.add_argument("input", type=Path)
+    http_parser.add_argument("--run-id", default="http-run")
+    http_parser.add_argument("--batch-size", type=int, default=1_000)
+    http_parser.add_argument("--speed", type=float, default=0)
+    http_parser.add_argument(
+        "--endpoint", default=os.getenv("EVENT_API_URL", "http://localhost:8000/v1/events")
+    )
+    http_parser.add_argument("--invalid-output")
+    http_parser.add_argument("--force", action="store_true")
     return parser
 
 
@@ -91,6 +105,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     _validate_input(parser, args.input)
 
     try:
+        if args.command == "http":
+            _validate_outputs(parser, args.input, "-", args.invalid_output, force=args.force)
+            publisher = HttpEventPublisher(args.endpoint)
+            with ExitStack() as stack:
+                invalid_output = (
+                    _open_output(stack, args.invalid_output, force=args.force)
+                    if args.invalid_output
+                    else None
+                )
+
+                def reject_for_http(issue: ParseIssue) -> None:
+                    if invalid_output is not None:
+                        invalid_output.write(json.dumps(issue.to_dict(), sort_keys=True) + "\n")
+
+                stats = replay_file(
+                    args.input,
+                    replay_run_id=args.run_id,
+                    emit=publisher.publish,
+                    on_invalid=reject_for_http,
+                    batch_size=args.batch_size,
+                    speed=args.speed,
+                )
+                publisher.close()
+            print(json.dumps(asdict(stats), sort_keys=True), file=sys.stderr)
+            return 0
+
         if args.command == "publish":
             _validate_outputs(
                 parser,

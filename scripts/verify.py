@@ -10,6 +10,20 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 EXPECTED = Path("tests/fixtures/golden_outputs.json")
+EXPECTED_CATALOG = Path("tests/fixtures/product_catalog_expected.json")
+
+
+def require_equal(label: str, actual: object, expected: object) -> None:
+    if actual == expected:
+        return
+    diagnostic = {
+        "check": label,
+        "expected": expected,
+        "actual": actual,
+    }
+    raise RuntimeError(
+        "verification mismatch:\n" + json.dumps(diagnostic, indent=2, sort_keys=True)
+    )
 
 
 def clickhouse(sql: str) -> list[dict[str, object]]:
@@ -81,6 +95,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshot", type=Path)
     parser.add_argument("--snapshot-only", action="store_true")
+    parser.add_argument("--with-catalog", action="store_true")
     args = parser.parse_args()
     expected = json.loads(EXPECTED.read_text(encoding="utf-8"))
     raw = integerize(
@@ -126,13 +141,39 @@ def main() -> int:
         "quality": quality,
         "redis_active_carts": carts,
     }
+    if args.with_catalog:
+        catalog = integerize(
+            clickhouse(
+                "SELECT product_id,category_id,product_name,toString(price) price,"
+                "is_active,catalog_version FROM product_catalog_current_canonical "
+                "ORDER BY product_id"
+            ),
+            {"product_id", "category_id", "catalog_version"},
+        )
+        actual["product_catalog"] = catalog
+        if not args.snapshot_only:
+            require_equal(
+                "product_catalog",
+                catalog,
+                json.loads(EXPECTED_CATALOG.read_text(encoding="utf-8")),
+            )
     if not args.snapshot_only:
-        assert raw == expected["canonical_raw"]
-        assert metrics == expected["metrics"]
-        assert quality == sorted(expected["quality"], key=lambda row: row["quality_event_id"])
-        assert carts == expected["redis_active_carts"]
+        require_equal("canonical_raw", raw, expected["canonical_raw"])
+        require_equal("metrics", metrics, expected["metrics"])
+        require_equal(
+            "quality",
+            quality,
+            sorted(expected["quality"], key=lambda row: row["quality_event_id"]),
+        )
+        require_equal("redis_active_carts", carts, expected["redis_active_carts"])
     ttl_limit = int(os.getenv("REDIS_CART_TTL_SECONDS", "604800"))
-    assert all(ttl == -2 or 0 < ttl <= ttl_limit for ttl in ttls.values())
+    invalid_ttls = {
+        user_id: ttl for user_id, ttl in ttls.items() if not (ttl == -2 or 0 < ttl <= ttl_limit)
+    }
+    if invalid_ttls:
+        raise RuntimeError(
+            f"Redis cart TTL must be absent (-2) or in (0, {ttl_limit}], got {invalid_ttls}"
+        )
     if args.snapshot:
         args.snapshot.parent.mkdir(parents=True, exist_ok=True)
         args.snapshot.write_text(json.dumps(actual, sort_keys=True), encoding="utf-8")

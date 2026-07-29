@@ -10,9 +10,10 @@
     <packaging>pom</packaging>
 
     <name>Taobao Real-Time Customer Behavior Platform</name>
-    <description>Parent build for the Taobao Python replay and Java Flink streaming platform.</description>
+    <description>Parent build for the Taobao Python/SQL Flink streaming platform.</description>
 
     <modules>
+        <module>flink-sql-pipeline</module>
         <module>flink-jobs/taobao-stream-job</module>
     </modules>
 

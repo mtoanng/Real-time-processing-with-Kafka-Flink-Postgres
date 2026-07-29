@@ -8,8 +8,9 @@ for run_id in "${run_ids[@]}"; do
     tests/fixtures/user_behavior_fixture.csv \
     --run-id "$run_id" \
     --batch-size "${REPLAY_BATCH_SIZE:-100}" \
-    --speed "${REPLAY_SPEED_FACTOR:-0}"
+    --speed "${REPLAY_SPEED_FACTOR:-0}" \
+    --bootstrap-servers "${KAFKA_CLIENT_BOOTSTRAP_SERVERS:-localhost:9092}" \
+    --schema-registry-url \
+      "${SCHEMA_REGISTRY_CLIENT_URL:-http://localhost:8081/apis/ccompat/v7}"
 done
-docker compose -f infra/docker-compose.yml exec -T flink-jobmanager \
-  flink run -d -c com.taobao.behavior.TaobaoStreamJob /opt/flink/usrlib/taobao.jar
-echo "Published ${#run_ids[@]} replay attempts and submitted the bounded Flink job."
+echo "Published ${#run_ids[@]} deterministic replay attempts."

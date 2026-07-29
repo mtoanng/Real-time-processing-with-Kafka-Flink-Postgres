@@ -1,71 +1,54 @@
 # Runbook
 
-Run the complete composition only on a disposable host with Docker, Java 11+,
-Maven, Python 3.11+, `curl`, and enough memory for Kafka, Flink, ClickHouse,
-Schema Registry, and Redis.
-
-## Checks
-
-Prediction: 22 Python tests and 33 Java tests pass; the shaded JAR packages and
-the single Compose model renders.
-
-```bash
-make checks
-```
-
-## Start, replay, and verify
+Prerequisites: Python 3.11+, Maven/Java 11, Docker Compose and enough disk/RAM
+for the PyFlink image and the core services/one-shot containers. Use a disposable remote host
+when the laptop is constrained.
 
 ```bash
 cp .env.example .env
+make checks
 make start
 make replay
 make verify
 ```
 
-`make start` packages the job, starts the six runtime services, and registers
-the Avro schema. `make replay` publishes `golden-a,golden-b` before submitting
-the bounded Kafka source so end-of-input advances the final watermark.
+`make start` packages the Flink 1.20 connector bundle, starts core services,
+registers Avro and submits one detached SQL/PyFlink job. Check the job and last
+checkpoint at `http://localhost:8082`.
 
-`make verify` requires exact equality with the committed golden contract for:
+The committed ClickHouse Kafka Engine queues are a local-smoke contract and
+connect to `kafka:29092`. A final Confluent Cloud run still requires a
+credential-injected ClickHouse Kafka configuration; that path is not
+implemented or verified in this phase.
 
-- 11 canonical raw business rows;
-- five metric keys and values;
-- two invalid, eleven duplicate, and one late quality identities;
-- user 1 cart `{101: "11|1511658004000|1511658005000"}`;
-- user 2 empty cart;
-- a positive bounded TTL on every existing cart key.
+The normal core uses an unbounded Kafka source because the job starts before
+replay. For a bounded experiment, publish the fixture first and submit a fresh
+job with `KAFKA_SOURCE_BOUNDED=true`.
 
-## Recovery experiment
-
-This is a controlled failure and must run on a disposable host. First capture
-an uninterrupted snapshot, then repeat the same bounded input with
-`KAFKA_SOURCE_BOUNDED=false`, a short checkpoint interval, and a running job.
-After one checkpoint completes:
+Catalog extension:
 
 ```bash
-RECOVERY_TEST_CONFIRM=YES \
-FLINK_JOB_ID=<job-id> \
-BASELINE_SNAPSHOT=artifacts/uninterrupted.json \
-make recovery-test
+docker compose -f infra/docker-compose.yml \
+  --profile core --profile catalog up -d postgres kafka-connect
+POSTGRES_PASSWORD=local-catalog python -m scripts.register_connector
+bash scripts/update_catalog.sh
+PYTHONPATH=producer/src python scripts/verify.py --with-catalog
 ```
 
-The script restarts the TaskManager, waits for the job to return to `RUNNING`,
-captures canonical raw/metric/quality/cart state, and requires exact equality
-with the uninterrupted snapshot. Until that command succeeds with real
-services, recovery is `NOT VERIFIED`.
+API extension:
 
-## Controlled failure experiment
+```bash
+docker compose -f infra/docker-compose.yml \
+  --profile core --profile api up -d api
+```
 
-Set `FLINK_MAX_OUT_OF_ORDERNESS_MS=0`, rerun from clean disposable volumes, and
-predict which fixture rows become late before executing. The canonical raw
-count must remain unchanged while metric and late-quality results change.
-Restore the default `5000` afterward.
+Recovery requires a completed checkpoint. Stop a TaskManager during replay,
+allow the fixed-delay restart, then compare canonical business columns with an
+uninterrupted run. Do not compare ingestion timestamps. This experiment is
+`NOT VERIFIED` unless evidence from real services is saved.
 
-## Stop
+Teardown preserves named volumes:
 
 ```bash
 make stop
 ```
-
-This stops containers but preserves named volumes. Remove volumes only as a
-separate, explicitly approved disposable-host cleanup.
