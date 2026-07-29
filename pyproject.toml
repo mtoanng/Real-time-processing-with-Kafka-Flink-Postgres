@@ -20,6 +20,7 @@ flink = ["apache-flink==1.20.2"]
 
 [project.scripts]
 taobao-replay = "taobao_replay.cli:main"
+taobao-catalog = "taobao_catalog.generator:main"
 
 [tool.setuptools]
 package-dir = {"" = "producer/src"}

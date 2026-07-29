@@ -29,8 +29,6 @@ x-flink-environment: &flink-environment
 x-flink-volumes: &flink-volumes
   - flink_checkpoints:/var/lib/flink/checkpoints
   - ../flink-python-pipeline:/opt/flink/app:ro
-  # Prebuilt connector factories belong to the Flink platform classpath.
-  - ../flink-sql-pipeline/target/taobao-sql-connectors.jar:/opt/flink/lib/taobao-sql-connectors.jar:ro
 
 services:
   kafka:
@@ -111,6 +109,7 @@ services:
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
+    image: ${APP_RUNTIME_IMAGE:-taobao-app-runtime:local}
     command: ["python", "-m", "taobao_serving.redis_cart"]
     restart: unless-stopped
     depends_on:
@@ -134,6 +133,7 @@ services:
     build:
       context: ..
       dockerfile: infra/flink-python.Dockerfile
+    image: ${FLINK_RUNTIME_IMAGE:-taobao-flink-runtime:local}
     command: jobmanager
     ports: ["127.0.0.1:8082:8081"]
     environment:
@@ -148,6 +148,7 @@ services:
     build:
       context: ..
       dockerfile: infra/flink-python.Dockerfile
+    image: ${FLINK_RUNTIME_IMAGE:-taobao-flink-runtime:local}
     command: taskmanager
     depends_on: [flink-jobmanager]
     environment:
@@ -163,6 +164,7 @@ services:
     build:
       context: ..
       dockerfile: infra/flink-python.Dockerfile
+    image: ${FLINK_RUNTIME_IMAGE:-taobao-flink-runtime:local}
     depends_on: [flink-jobmanager, flink-taskmanager]
     entrypoint: ["/opt/flink/bin/flink"]
     command:
@@ -231,6 +233,7 @@ services:
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
+    image: ${APP_RUNTIME_IMAGE:-taobao-app-runtime:local}
     restart: unless-stopped
     ports: ["127.0.0.1:8000:8000"]
     depends_on:

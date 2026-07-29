@@ -28,8 +28,13 @@ job_running() {
     'import json,sys; raise SystemExit(not any(job.get("state") == "RUNNING" for job in json.load(sys.stdin).get("jobs", [])))'
 }
 
-mvn -B -q -pl flink-sql-pipeline -am package -DskipTests
-"${compose[@]}" up -d --build \
+if [[ "${RUNTIME_IMAGES_PREBUILT:-false}" == "true" ]]; then
+  build_args=(--no-build)
+else
+  build_args=(--build)
+fi
+
+"${compose[@]}" up -d "${build_args[@]}" \
   kafka schema-registry clickhouse redis redis-cart-materializer \
   flink-jobmanager flink-taskmanager
 wait_for "Flink JobManager" curl -fsS http://localhost:8082/jobs/overview

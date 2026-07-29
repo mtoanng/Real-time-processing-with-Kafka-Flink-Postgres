@@ -13,7 +13,7 @@
     <description>Parent build for the Taobao Python/SQL Flink streaming platform.</description>
 
     <modules>
-        <module>flink-sql-pipeline</module>
+        <module>flink-connectors</module>
     </modules>
 
     <properties>

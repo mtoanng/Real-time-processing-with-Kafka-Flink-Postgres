@@ -9,6 +9,6 @@ This directory is the active Data Engineer authoring surface.
 - `taobao_flink/job.py`: attaches SQL sinks and DataStream operators to one
   `StreamExecutionEnvironment`.
 
-`flink-sql-pipeline/` packages prebuilt JVM connectors only; it contains no
+`flink-connectors/` packages pinned JVM connectors only; it contains no
 authored Java source. The former Java job under `flink-jobs/` is rollback-only
 until a real parity and checkpoint-recovery run succeeds.

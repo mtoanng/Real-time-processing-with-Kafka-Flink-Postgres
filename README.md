@@ -21,6 +21,12 @@ The catalog branch never changes source-faithful raw behavior or the metric
 grain `(window_start, item_id, source_category_id)`. The API reads Redis carts
 and joins canonical ClickHouse metrics to current catalog metadata.
 
+The five committed products are only the bounded test fixture. For the real
+`UserBehavior.csv`, `taobao-catalog` scans the file with bounded Python memory,
+derives every valid `(item_id, category_id)`, and produces a deterministic
+synthetic operational catalog plus a coverage manifest. Names and prices are
+explicitly synthetic; Alibaba does not provide them in this dataset.
+
 ## Profiles
 
 - `checks`: Python contracts, connector packaging, lint and Compose rendering;
@@ -34,6 +40,8 @@ and joins canonical ClickHouse metrics to current catalog metadata.
 The former Java DataStream job is excluded from the active Maven reactor and
 remains only as rollback evidence until live SQL/PyFlink parity and checkpoint
 restoration are proven. The active pipeline contains no authored Java source.
+`flink-connectors/` is a dependency manifest, not a Java pipeline. CI packages
+those pinned JVM connectors into a versioned custom Flink runtime image.
 
 ## Checks and local core
 
@@ -45,19 +53,32 @@ make verify
 make stop
 ```
 
-For a remote-host, repeatable deployment and recovery procedure, follow
+For a repeatable AWS EC2 deployment and recovery procedure, follow
 [the runbook](docs/RUNBOOK.md). Operational checks, rollback, secrets and the
-current cloud deployment boundary are in [operations](docs/OPERATIONS.md).
+self-hosted EC2 boundary are in [operations](docs/OPERATIONS.md).
+
+The standard remote path is GitHub Actions followed by one small SSH deployment
+script. After checks pass, a protected `aws-demo` environment deploys the exact
+Git commit, builds SHA-tagged runtime images on EC2, and starts Compose. This
+intentionally avoids a container registry and extra AWS control-plane services
+for the single-host portfolio deployment.
 
 The Flink Python image is intentionally not built during `make checks`; it is
-large and requires a disposable runtime host. The committed ClickHouse Kafka
-Engine queues target the local broker; secure Confluent Cloud-to-ClickHouse
-ingestion remains a documented deployment gate, not a verified claim. Catalog:
+large and requires a disposable EC2 host. The committed ClickHouse Kafka Engine
+queues target the self-hosted Kafka broker on the same Docker network.
+Full-dataset catalog:
 
 ```bash
-docker compose -f infra/docker-compose.yml --profile core --profile catalog up -d
-POSTGRES_PASSWORD=local-catalog python -m scripts.register_connector
+PYTHONPATH=producer/src python -m taobao_catalog data/UserBehavior.csv
+docker compose -f infra/docker-compose.yml --profile catalog up -d postgres
+bash scripts/load_product_catalog.sh
+docker compose -f infra/docker-compose.yml --profile core --profile catalog up -d kafka-connect
+POSTGRES_PASSWORD=local-catalog python scripts/register_connector.py
 ```
+
+Load PostgreSQL before registering Debezium so its initial snapshot contains
+the complete generated catalog. The runbook also retains the five-row
+fixture-only path.
 
 HTTP replay:
 

@@ -9,9 +9,9 @@
         <version>1.0.0-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
-    <artifactId>taobao-sql-connectors</artifactId>
-    <name>Taobao Flink SQL connector bundle</name>
-    <description>Prebuilt JVM connectors used by the Python/SQL Flink job.</description>
+    <artifactId>taobao-flink-connectors</artifactId>
+    <name>Taobao Flink connector bundle</name>
+    <description>Pinned JVM connector factories for the Python/SQL Flink runtime.</description>
     <dependencies>
         <dependency>
             <groupId>org.apache.flink</groupId>
@@ -40,7 +40,7 @@
                         <goals><goal>shade</goal></goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <finalName>taobao-sql-connectors</finalName>
+                            <finalName>taobao-flink-connectors</finalName>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>

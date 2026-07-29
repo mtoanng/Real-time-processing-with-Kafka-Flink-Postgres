@@ -23,6 +23,13 @@ Product catalog CDC is implemented as isolated current-state replication. It
 replaces the old `behavior_rules` idea; behavior rules, Broadcast State,
 cart-abandonment timers and alerts are not active architecture.
 
+The committed five-row catalog is a bounded contract fixture. Full-dataset
+catalog preparation is a Python ingestion concern: a bounded-memory generator
+extracts every semantically valid `(item_id, category_id)` and bulk-loads
+PostgreSQL before the Debezium initial snapshot. Synthetic product names and
+prices are never presented as fields from the Alibaba dataset and never alter
+canonical behavior or metric attribution.
+
 The Redis adapter and ClickHouse Kafka Engine tables are delivery adapters, not
 additional business-processing systems. Flink still computes canonical
 classification, metrics and cart mutations.

@@ -1,5 +1,6 @@
-.PHONY: checks start replay verify snapshot recovery-test stop
+.PHONY: checks start replay verify snapshot recovery-test catalog-generate catalog-load stop
 SHELL := bash
+CATALOG_SOURCE ?= data/UserBehavior.csv
 
 checks:
 	PYTHONPATH=producer/src python -m unittest discover -s producer/tests -v
@@ -25,6 +26,12 @@ snapshot:
 
 recovery-test:
 	bash scripts/recovery_test.sh
+
+catalog-generate:
+	PYTHONPATH=producer/src python -m taobao_catalog "$(CATALOG_SOURCE)"
+
+catalog-load:
+	bash scripts/load_product_catalog.sh
 
 stop:
 	bash scripts/stop.sh

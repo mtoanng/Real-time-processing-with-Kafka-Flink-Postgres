@@ -2,23 +2,43 @@
 
 ## Status
 
-The Docker Compose deployment is a **remote-host demo profile**. Its source,
-schema, job submission, verification, recovery and teardown commands are
-implemented. A full service run has not yet been captured as evidence, so it is
-not deployment-verified or production-ready.
+The Docker Compose deployment is the **AWS EC2 self-hosted demonstration
+profile**. It runs Apache Kafka KRaft, Apicurio Schema Registry, Flink,
+ClickHouse and Redis on one disposable instance. Its source, schema, job
+submission, verification, recovery and teardown commands are implemented. A
+full service run has not yet been captured as evidence, so it is not
+deployment-verified or production-ready.
 
-The final cloud target is Confluent Cloud for Kafka and Schema Registry. That
-deployment is currently blocked: the committed ClickHouse Kafka Engine DDL uses
-the local broker address `kafka:29092` and has no credential-injection path.
-Do not attempt to point the existing local Compose profile at Confluent Cloud.
+`kafka:29092` is intentional: it is the internal Docker hostname used by
+ClickHouse Kafka Engine and Flink on the EC2 instance. Kafka's host port is
+bound to loopback, so it is not an Internet-facing broker.
+
+## Release model
+
+- `.github/workflows/ci.yml` is both the credential-independent merge gate and
+  the small single-host deployment workflow.
+- Pull requests run checks only. A successful push to `main`, or a manual
+  dispatch, enters the protected GitHub Environment `aws-demo`.
+- GitHub opens one non-interactive SSH session and streams
+  `scripts/deploy_ec2.sh` to the host. The private key exists only as a GitHub
+  Environment secret and should be dedicated to deployment.
+- The host checks out the exact SHA under `~/taobao-streaming/releases/`,
+  builds both runtime images with that SHA as the local tag, starts the stack,
+  and advances `current` only after startup succeeds.
+- `~/taobao-streaming/shared/.env`, Docker volumes and Flink checkpoints
+  remain outside the release directory.
+
+This is a single-host demonstration release model, not autoscaling,
+high-availability orchestration.
 
 ## Secrets
 
 - Copy `.env.example` to `.env` only on the deployment host.
-- Keep `.env`, cloud API keys, SASL passwords and Schema Registry credentials
-  outside Git.
-- Use the host's secret manager or protected environment variables for a
-  managed Kafka deployment.
+- Keep `.env`, the SSH deploy key, passwords and API tokens outside Git.
+- Store the deployment `.env` at `~/taobao-streaming/shared/.env` with mode
+  `600`. Use Session Manager or restricted SSH to provision it.
+- Use restrictive EC2 security-group rules; no application secret needs to be
+  exposed publicly for the self-hosted demo.
 - Rotate a credential rather than editing it into JSON, SQL, Python or Compose.
 
 ## What a successful local-smoke run proves
@@ -57,12 +77,20 @@ curl -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-local-clickhouse}" \
   --data-binary 'SELECT count() FROM raw_behavior_events_canonical'
 ```
 
+For a full-dataset catalog, retain
+`artifacts/product_catalog_manifest.json` with the deployment evidence. Its
+`unique_products` must equal both PostgreSQL `product_catalog` and ClickHouse
+`product_catalog_current_canonical` counts. The generated names and prices are
+synthetic portfolio metadata, not Alibaba source attributes.
+
 ## Failure handling and rollback
 
 - A failed `scripts/start.sh` exits with the component that failed or timed
   out. Inspect `docker compose ... logs <service>` before retrying.
 - For a failed Flink job, inspect the JobManager UI/logs and preserve the
   `flink_checkpoints` volume. Do not remove volumes before collecting evidence.
+- Roll back by manually dispatching a known-good commit from its GitHub ref.
+  The host rebuilds source and both local images from that exact SHA.
 - The recovery experiment restarts only the TaskManager after a completed
   checkpoint and compares canonical snapshots.
 - The legacy Java job is excluded rollback evidence, not a supported parallel
