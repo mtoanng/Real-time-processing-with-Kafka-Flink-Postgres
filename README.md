@@ -45,6 +45,10 @@ make verify
 make stop
 ```
 
+For a remote-host, repeatable deployment and recovery procedure, follow
+[the runbook](docs/RUNBOOK.md). Operational checks, rollback, secrets and the
+current cloud deployment boundary are in [operations](docs/OPERATIONS.md).
+
 The Flink Python image is intentionally not built during `make checks`; it is
 large and requires a disposable runtime host. The committed ClickHouse Kafka
 Engine queues target the local broker; secure Confluent Cloud-to-ClickHouse

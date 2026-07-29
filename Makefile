@@ -1,4 +1,4 @@
-.PHONY: checks start replay verify recovery-test stop
+.PHONY: checks start replay verify snapshot recovery-test stop
 SHELL := bash
 
 checks:
@@ -19,6 +19,9 @@ replay:
 
 verify:
 	PYTHONPATH=producer/src python scripts/verify.py
+
+snapshot:
+	PYTHONPATH=producer/src python scripts/verify.py --snapshot artifacts/uninterrupted.json --snapshot-only
 
 recovery-test:
 	bash scripts/recovery_test.sh
