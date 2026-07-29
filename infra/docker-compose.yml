@@ -29,9 +29,7 @@ x-flink-environment: &flink-environment
 x-flink-volumes: &flink-volumes
   - flink_checkpoints:/var/lib/flink/checkpoints
   - ../flink-python-pipeline:/opt/flink/app:ro
-  # The bundle contains SQL factories plus the minimal watermark adapter.
-  # Mounting it in lib makes the class visible to both the Python client JVM
-  # while the job graph is built and to TaskManager user-code classloaders.
+  # Prebuilt connector factories belong to the Flink platform classpath.
   - ../flink-sql-pipeline/target/taobao-sql-connectors.jar:/opt/flink/lib/taobao-sql-connectors.jar:ro
 
 services:

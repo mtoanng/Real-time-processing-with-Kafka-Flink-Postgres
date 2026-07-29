@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = (ROOT / "infra/docker-compose.yml").read_text(encoding="utf-8")
 JOB = (ROOT / "flink-python-pipeline/taobao_flink/job.py").read_text(encoding="utf-8")
 INSERTS = (ROOT / "flink-python-pipeline/sql/inserts.sql").read_text(encoding="utf-8")
+PARENT_POM = (ROOT / "pom.xml").read_text(encoding="utf-8")
 
 
 class RuntimeCompositionTests(unittest.TestCase):
@@ -40,7 +41,8 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertEqual(1, JOB.count("table_env.to_data_stream("))
         self.assertIn("table_env.to_data_stream(classified)", JOB)
         self.assertIn('"table.exec.uid.generation", "ALWAYS"', JOB)
-        self.assertIn("ImmediateWatermarkStrategy.create", JOB)
+        self.assertIn("WatermarkStrategy.for_bounded_out_of_orderness", JOB)
+        self.assertNotIn("get_gateway", JOB)
         self.assertIn("statement_set.attach_as_datastream()", JOB)
         self.assertIn(
             "/opt/flink/lib/taobao-sql-connectors.jar:ro",
@@ -51,6 +53,11 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertIn("INSERT INTO quality_events_out", INSERTS)
         self.assertIn("INSERT INTO product_catalog_out", INSERTS)
         self.assertIn("INSERT INTO cart_mutations_out", INSERTS)
+
+    def test_active_build_contains_no_authored_java_source(self) -> None:
+        self.assertNotIn("<module>flink-jobs/taobao-stream-job</module>", PARENT_POM)
+        authored_java = list((ROOT / "flink-sql-pipeline").rglob("*.java"))
+        self.assertEqual([], authored_java)
 
 
 if __name__ == "__main__":

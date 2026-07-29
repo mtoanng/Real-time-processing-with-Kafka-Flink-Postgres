@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from pyflink.common import Duration
 from pyflink.common.restart_strategy import RestartStrategies
-from pyflink.common.watermark_strategy import WatermarkStrategy
+from pyflink.common.watermark_strategy import TimestampAssigner, WatermarkStrategy
 from pyflink.datastream import CheckpointingMode, StreamExecutionEnvironment
 from pyflink.datastream.checkpoint_config import ExternalizedCheckpointCleanup
-from pyflink.java_gateway import get_gateway
 from pyflink.table import DataTypes, EnvironmentSettings, Schema, StreamTableEnvironment
 
 from taobao_flink.config import PipelineConfig
@@ -28,12 +27,20 @@ event_time_ms, source_sequence, replay_run_id
 """
 
 
+class EventTimeAssigner(TimestampAssigner):
+    def extract_timestamp(self, value, record_timestamp: int) -> int:
+        del record_timestamp
+        return value.event_time_ms
+
+
 def _watermark_strategy(config: PipelineConfig) -> WatermarkStrategy:
-    gateway = get_gateway()
-    java_strategy = gateway.jvm.com.taobao.platform.ImmediateWatermarkStrategy.create(
-        config.max_out_of_orderness_ms
+    return (
+        WatermarkStrategy.for_bounded_out_of_orderness(
+            Duration.of_millis(config.max_out_of_orderness_ms)
+        )
+        .with_timestamp_assigner(EventTimeAssigner())
+        .with_idleness(Duration.of_seconds(30))
     )
-    return WatermarkStrategy(java_strategy).with_idleness(Duration.of_seconds(30))
 
 
 def _configure(config: PipelineConfig):
@@ -89,9 +96,8 @@ def build_job(config: PipelineConfig):
     )
     duplicate_quality = accepted.get_side_output(DUPLICATES)
 
-    watermark_strategy = _watermark_strategy(config)
     with_watermarks = (
-        accepted.assign_timestamps_and_watermarks(watermark_strategy)
+        accepted.assign_timestamps_and_watermarks(_watermark_strategy(config))
         .name("AssignEventTimeAndWatermarks")
         .uid("assign-event-time-watermarks")
     )
@@ -122,7 +128,8 @@ def build_job(config: PipelineConfig):
         .build()
     )
     table_env.create_temporary_view(
-        "on_time_events", table_env.from_data_stream(on_time, on_time_schema)
+        "on_time_events",
+        table_env.from_data_stream(on_time, on_time_schema),
     )
     table_env.create_temporary_view("quality_events", table_env.from_data_stream(quality))
     table_env.create_temporary_view("cart_mutations", table_env.from_data_stream(cart_mutations))

@@ -31,5 +31,6 @@ catalog changelog handling. PyFlink DataStream owns event-ID state TTL,
 duplicate/late evidence, watermarks and active-cart transitions. Connector JARs
 and Kafka/ClickHouse/Redis adapters are platform boundaries.
 
-The Java DataStream implementation is rollback-only migration evidence. Remove
-it only after a live repeated-replay and checkpoint-restoration parity run.
+The Java DataStream implementation is excluded from the active build and kept
+only as rollback evidence. Remove it after a live repeated-replay and
+checkpoint-restoration parity run.

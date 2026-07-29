@@ -23,7 +23,7 @@ and joins canonical ClickHouse metrics to current catalog metadata.
 
 ## Profiles
 
-- `checks`: Python/Java contract tests, package, lint and Compose rendering;
+- `checks`: Python contracts, connector packaging, lint and Compose rendering;
   no service connections.
 - `core`: Kafka, Schema Registry, one Flink job, ClickHouse, Redis and the thin
   Redis materializer.
@@ -31,9 +31,9 @@ and joins canonical ClickHouse metrics to current catalog metadata.
   `core`.
 - `api`: optional HTTP ingress/query boundary; use together with `core`.
 
-The former Java DataStream job remains a non-active rollback implementation
-until live SQL/PyFlink parity and checkpoint restoration are proven. New
-business behavior must be authored in `flink-python-pipeline/`, not Java.
+The former Java DataStream job is excluded from the active Maven reactor and
+remains only as rollback evidence until live SQL/PyFlink parity and checkpoint
+restoration are proven. The active pipeline contains no authored Java source.
 
 ## Checks and local core
 

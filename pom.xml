@@ -14,7 +14,6 @@
 
     <modules>
         <module>flink-sql-pipeline</module>
-        <module>flink-jobs/taobao-stream-job</module>
     </modules>
 
     <properties>

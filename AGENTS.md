@@ -172,7 +172,7 @@ unless the user explicitly overrides.(Learning can be saved for later)
 Typical checks:
 
 - Python tests for fixture/replay code;
-- Maven package and Java tests;
+- Maven connector package; run legacy Java tests only when validating rollback;
 - Avro compatibility;
 - ClickHouse/Redis contract tests where available;
 - fixture end-to-end smoke test;
