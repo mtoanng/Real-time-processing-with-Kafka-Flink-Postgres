@@ -1,5 +1,8 @@
--- Kafka/Avro input. Avro decoding remains a JVM connector capability; no Java
--- business pipeline is authored by the Data Engineer.
+-- SOURCE: source-faithful behavior events from the external replay/API boundary.
+-- event_id is the replay-independent business identity. replay_run_id is only
+-- lineage, so neither canonical raw uniqueness nor metric grain includes it.
+-- Avro decoding remains a JVM connector capability; no Java business pipeline
+-- is authored by the Data Engineer.
 CREATE TABLE behavior_events (
     event_id STRING,
     user_id BIGINT,
@@ -20,7 +23,8 @@ CREATE TABLE behavior_events (
     'value.avro-confluent.url' = '{{SCHEMA_REGISTRY_URL}}'{{SOURCE_SECURITY_OPTIONS}}
 );
 
--- Raw Debezium envelope is decoded by the built-in debezium-json format.
+-- OPTIONAL SOURCE: raw Debezium catalog envelope. This branch does not enrich
+-- behavior events; it materializes current catalog state for ClickHouse joins.
 -- PostgreSQL forbids physical deletes; is_active=false is the domain delete.
 CREATE TABLE product_catalog_changes (
     product_id BIGINT,
@@ -54,6 +58,7 @@ CREATE TABLE raw_events_out (
     replay_run_id STRING,
     record_version BIGINT
 ) WITH (
+    -- SINK: Kafka materialization boundary consumed in batches by ClickHouse.
     'connector' = 'kafka',
     'topic' = '{{RAW_TOPIC}}',
     'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
@@ -73,6 +78,7 @@ CREATE TABLE metrics_out (
     replay_run_id STRING,
     record_version BIGINT
 ) WITH (
+    -- SINK: one-minute event-time metrics; logical grain is item/category/window.
     'connector' = 'kafka',
     'topic' = '{{METRICS_TOPIC}}',
     'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
@@ -96,6 +102,7 @@ CREATE TABLE quality_events_out (
     observed_at_ms BIGINT,
     record_version BIGINT
 ) WITH (
+    -- SINK: durable INVALID, DUPLICATE and LATE audit records.
     'connector' = 'kafka',
     'topic' = '{{QUALITY_TOPIC}}',
     'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
@@ -113,6 +120,7 @@ CREATE TABLE product_catalog_out (
     catalog_version BIGINT,
     PRIMARY KEY (product_id) NOT ENFORCED
 ) WITH (
+    -- OPTIONAL SINK: compacted current catalog state for ClickHouse.
     'connector' = 'upsert-kafka',
     'topic' = '{{CATALOG_OUTPUT_TOPIC}}',
     'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
@@ -130,6 +138,7 @@ CREATE TABLE cart_mutations_out (
     last_updated_at_ms BIGINT,
     PRIMARY KEY (user_id, item_id) NOT ENFORCED
 ) WITH (
+    -- SINK: compacted serving mutation log. Python, not Flink, writes Redis.
     'connector' = 'upsert-kafka',
     'topic' = '{{CART_MUTATION_TOPIC}}',
     'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',

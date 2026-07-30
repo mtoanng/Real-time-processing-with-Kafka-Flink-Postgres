@@ -1,3 +1,5 @@
+"""Bounded-memory CSV reader for the simulated external producer."""
+
 from __future__ import annotations
 
 import csv
@@ -10,11 +12,14 @@ from taobao_replay.contracts import FIELD_NAMES, RowValidationError, UserBehavio
 
 @dataclass(frozen=True, slots=True)
 class ParseIssue:
+    """Producer-side rejection; it never reaches Kafka or Flink."""
+
     source_sequence: int
     raw_values: tuple[str, ...]
     reason: str
 
     def to_dict(self) -> dict[str, int | str | list[str]]:
+        """Return JSON-safe evidence for replay reports."""
         return {
             "source_sequence": self.source_sequence,
             "raw_values": list(self.raw_values),
@@ -24,6 +29,8 @@ class ParseIssue:
 
 @dataclass(frozen=True, slots=True)
 class ReplayBatch:
+    """One bounded batch preserving the source order of valid and rejected rows."""
+
     events: tuple[UserBehaviorEvent, ...]
     issues: tuple[ParseIssue, ...]
     source_rows: int

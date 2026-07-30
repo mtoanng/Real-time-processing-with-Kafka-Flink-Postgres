@@ -1,3 +1,10 @@
+"""Runtime configuration for the single SQL/PyFlink streaming job.
+
+The configuration names the Kafka contracts and recovery policy; it does not
+contain business rules.  Core startup needs Kafka, Schema Registry, Flink,
+ClickHouse and Redis only.  The catalog topic is an optional extension.
+"""
+
 from __future__ import annotations
 
 import os
@@ -6,6 +13,7 @@ from pathlib import Path
 
 
 def _positive_int(name: str, default: int) -> int:
+    """Read a required-positive integer setting with a safe demo default."""
     raw = os.getenv(name, str(default))
     try:
         value = int(raw)
@@ -18,6 +26,12 @@ def _positive_int(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class PipelineConfig:
+    """Immutable deployment contract for sources, materialization topics and state.
+
+    ``replay_run_id`` is deliberately absent: it is event lineage supplied by
+    the source, not a runtime setting or canonical business key.
+    """
+
     kafka_bootstrap_servers: str
     kafka_security_protocol: str
     kafka_sasl_mechanism: str
@@ -45,6 +59,7 @@ class PipelineConfig:
 
     @classmethod
     def from_environment(cls) -> PipelineConfig:
+        """Validate environment variables before the job contacts external services."""
         bounded = os.getenv("KAFKA_SOURCE_BOUNDED", "true").lower() == "true"
         connector = os.getenv("FLINK_CONNECTOR_JAR", "").strip()
         checkpoint_dir = os.getenv("FLINK_CHECKPOINT_DIR", "").strip()

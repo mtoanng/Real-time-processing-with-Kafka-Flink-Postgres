@@ -1,3 +1,5 @@
+"""Bounded deterministic replay for fixtures and external-client simulation."""
+
 from __future__ import annotations
 
 import time
@@ -11,6 +13,8 @@ from taobao_replay.reader import ParseIssue, iter_event_batches
 
 @dataclass(frozen=True, slots=True)
 class ReplayStats:
+    """Counts emitted and producer-rejected rows without claiming Flink outcomes."""
+
     source_rows: int
     emitted_events: int
     invalid_rows: int
@@ -28,7 +32,11 @@ def replay_file(
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> ReplayStats:
-    """Replay in source order; speed=0 disables pacing for tests and local validation."""
+    """Replay in source order; ``speed=0`` disables pacing.
+
+    Source order is preserved by iteration.  ``source_sequence`` distinguishes
+    repeated source rows and event-time ties; it does not make event time sorted.
+    """
     if speed < 0:
         raise ValueError("speed must be non-negative")
 

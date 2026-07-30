@@ -1,3 +1,11 @@
+"""Assemble the single recoverable SQL/PyFlink streaming topology.
+
+The job reads behavior events once, validates and deduplicates them before raw
+storage, routes late records away from one-minute metrics, and publishes Kafka
+materialization contracts for ClickHouse and Redis.  It never writes either
+serving store directly.
+"""
+
 from __future__ import annotations
 
 from pyflink.common import Duration
@@ -28,12 +36,15 @@ event_time_ms, source_sequence, replay_run_id
 
 
 class EventTimeAssigner(TimestampAssigner):
+    """Use producer event time, never ingestion or replay time, for watermarks."""
+
     def extract_timestamp(self, value, record_timestamp: int) -> int:
         del record_timestamp
         return value.event_time_ms
 
 
 def _watermark_strategy(config: PipelineConfig) -> WatermarkStrategy:
+    """Allow bounded disorder while making event-time lateness explicit."""
     return (
         WatermarkStrategy.for_bounded_out_of_orderness(
             Duration.of_millis(config.max_out_of_orderness_ms)
@@ -44,6 +55,7 @@ def _watermark_strategy(config: PipelineConfig) -> WatermarkStrategy:
 
 
 def _configure(config: PipelineConfig):
+    """Configure checkpoint-consistent Flink state, restart policy and SQL runtime."""
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
     env.enable_checkpointing(config.checkpoint_interval_ms, CheckpointingMode.EXACTLY_ONCE)
@@ -72,6 +84,12 @@ def _configure(config: PipelineConfig):
 
 
 def build_job(config: PipelineConfig):
+    """Build the topology without submitting it.
+
+    Flow: decoded → validation → event-id dedup → canonical raw; then
+    watermarks → late quality or one-minute metrics.  Cart state branches from
+    accepted unique events because it is a serving projection, not a metric.
+    """
     env, table_env = _configure(config)
     for statement in table_ddl(config):
         table_env.execute_sql(statement)
@@ -142,6 +160,7 @@ def build_job(config: PipelineConfig):
 
 
 def main() -> None:
+    """Load deployment configuration and submit the named Flink job."""
     config = PipelineConfig.from_environment()
     build_job(config).execute("Taobao Python-SQL Streaming Platform")
 

@@ -1,3 +1,9 @@
+"""Generate deterministic synthetic product metadata from valid Taobao items.
+
+The catalog is an optional operational fixture, not an attribute set supplied
+by the Alibaba/Taobao source dataset.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -18,6 +24,8 @@ CATALOG_UPDATED_AT = "2026-01-01T00:00:00Z"
 
 @dataclass(frozen=True, slots=True)
 class CatalogManifest:
+    """Coverage and reproducibility evidence for a generated catalog fixture."""
+
     source_rows: int
     valid_source_rows: int
     rejected_source_rows: int
@@ -25,6 +33,7 @@ class CatalogManifest:
     catalog_sha256: str
 
     def to_dict(self) -> dict[str, int | str]:
+        """Return JSON-safe manifest fields."""
         return asdict(self)
 
 
@@ -67,7 +76,11 @@ def _sha256(path: Path) -> str:
 
 
 def generate_catalog(source: Path, output: Path, manifest_path: Path) -> CatalogManifest:
-    """Create one deterministic synthetic catalog row for every valid source item."""
+    """Create one deterministic synthetic catalog row for every valid source item.
+
+    SQLite enforces that a source item cannot silently map to conflicting source
+    categories while keeping memory bounded for a full input file.
+    """
     if not source.is_file():
         raise FileNotFoundError(f"source dataset not found: {source}")
 

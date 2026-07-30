@@ -1,3 +1,10 @@
+"""Source-row contract used by the external replay client and optional HTTP ingress.
+
+This package simulates an upstream producer; it is not the Flink processing
+pipeline.  ``event_id`` is stable across replay runs while ``replay_run_id``
+records which delivery attempt carried it.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -14,6 +21,8 @@ class RowValidationError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class UserBehaviorEvent:
+    """Validated Kafka payload produced from one Taobao source-row occurrence."""
+
     event_id: str
     user_id: int
     item_id: int
@@ -24,6 +33,7 @@ class UserBehaviorEvent:
     replay_run_id: str
 
     def to_dict(self) -> dict[str, str | int]:
+        """Return the portable event payload used by Avro and HTTP publishers."""
         return asdict(self)
 
 
@@ -36,6 +46,7 @@ def deterministic_event_id(
     timestamp: int,
     source_sequence: int,
 ) -> str:
+    """Hash stable source fields plus sequence; intentionally exclude replay run ID."""
     canonical = "\x1f".join(
         str(value)
         for value in (
@@ -53,6 +64,7 @@ def deterministic_event_id(
 def parse_event(
     values: Sequence[str], *, source_sequence: int, replay_run_id: str
 ) -> UserBehaviorEvent:
+    """Validate one five-column CSV row and attach deterministic delivery identity."""
     if len(values) != len(FIELD_NAMES):
         raise RowValidationError(f"expected 5 columns, got {len(values)}")
     if source_sequence < 0:

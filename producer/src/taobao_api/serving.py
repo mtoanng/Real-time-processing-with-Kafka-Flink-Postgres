@@ -1,3 +1,5 @@
+"""Read adapter for rebuildable Redis cart state and ClickHouse analytics."""
+
 from __future__ import annotations
 
 import base64
@@ -9,12 +11,15 @@ from urllib.request import Request, urlopen
 
 
 class ServingStore:
+    """Expose serving queries without making Redis or ClickHouse business sources."""
+
     def __init__(self, redis_client: object, environment: Mapping[str, str]) -> None:
         self._redis = redis_client
         self._environment = environment
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str] | None = None) -> ServingStore:
+        """Create a Redis client from deployment configuration."""
         from redis import Redis
 
         active = os.environ if environment is None else environment
@@ -29,9 +34,11 @@ class ServingStore:
         return cls(client, active)
 
     def close(self) -> None:
+        """Release the Redis client held by this process."""
         self._redis.close()
 
     def cart(self, user_id: int) -> dict[str, object]:
+        """Read the current clickstream-derived cart projection for one user."""
         key = f"taobao:active_cart:{{{user_id}}}"
         values = self._redis.hgetall(key)
         items = []
@@ -48,6 +55,11 @@ class ServingStore:
         return {"user_id": user_id, "items": items, "ttl_seconds": int(self._redis.ttl(key))}
 
     def trending(self, minutes: int, as_of_ms: int | None) -> dict[str, object]:
+        """Join historical metrics with current catalog metadata at query time.
+
+        This is late-binding current-state enrichment, not a historical as-of
+        catalog join. ``as_of_ms`` supports the 2017 bounded fixture.
+        """
         as_of = "now64(3)" if as_of_ms is None else f"fromUnixTimestamp64Milli({as_of_ms})"
         sql = f"""
 WITH {as_of} AS as_of
@@ -84,6 +96,7 @@ LIMIT 20
         return {"window_minutes": minutes, "as_of_ms": as_of_ms, "products": normalized}
 
     def _clickhouse(self, sql: str) -> list[dict[str, object]]:
+        """Execute an internal ClickHouse JSON query using configured credentials."""
         endpoint = self._environment.get("CLICKHOUSE_ENDPOINT", "http://localhost:8123")
         database = self._environment.get("CLICKHOUSE_DATABASE", "taobao_behavior")
         user = self._environment.get("CLICKHOUSE_USER", "default")

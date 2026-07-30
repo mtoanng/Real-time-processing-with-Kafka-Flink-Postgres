@@ -1,3 +1,10 @@
+"""Small PyFlink escape hatches for stateful semantics not expressed in SQL.
+
+SQL owns relational validation and one-minute aggregation.  These operators
+only provide bounded event-id deduplication, durable side outputs for quality
+events, event-time late routing, and the active-cart projection.
+"""
+
 from __future__ import annotations
 
 import time
@@ -93,6 +100,7 @@ LATE_EVENTS = OutputTag("late-quality", QUALITY_TYPE)
 
 
 def _quality(row: Row, quality_type: str, reason: str, message: str) -> Row:
+    """Build one replay-safe quality record from a behavior event."""
     observed = int(time.time() * 1000)
     return Row(
         quality_event_id(
@@ -115,11 +123,14 @@ def _quality(row: Row, quality_type: str, reason: str, message: str) -> Row:
 
 
 class DeduplicateEventId(KeyedProcessFunction):
+    """Keep the first event ID within a configured TTL and audit later copies."""
+
     def __init__(self, retention_hours: int) -> None:
         self._retention_hours = retention_hours
         self._seen = None
 
     def open(self, runtime_context: RuntimeContext) -> None:
+        """Create checkpointed keyed state whose TTL bounds the dedup guarantee."""
         descriptor = ValueStateDescriptor("seen-event-id", Types.BOOLEAN())
         ttl = (
             StateTtlConfig.new_builder(Time.hours(self._retention_hours))
@@ -175,6 +186,8 @@ class RouteClassifiedEvent(ProcessFunction):
 
 
 class RouteLateEvent(KeyedProcessFunction):
+    """Exclude events at or behind the current watermark from closed metrics."""
+
     def process_element(self, value: Row, ctx: KeyedProcessFunction.Context):
         if value.event_time_ms <= ctx.timer_service().current_watermark():
             ctx.output(
@@ -191,10 +204,13 @@ class RouteLateEvent(KeyedProcessFunction):
 
 
 class ActiveCartProjector(KeyedProcessFunction):
+    """Derive ordered cart UPSERT/DELETE mutations; Redis is applied downstream."""
+
     def __init__(self, retention_hours: int) -> None:
         self._retention_hours = retention_hours
 
     def open(self, runtime_context: RuntimeContext) -> None:
+        """Create bounded checkpointed state for each user-item projection key."""
         descriptor = ValueStateDescriptor("active-cart-item-state", Types.PICKLED_BYTE_ARRAY())
         descriptor.enable_time_to_live(
             StateTtlConfig.new_builder(Time.hours(self._retention_hours))

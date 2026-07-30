@@ -1,3 +1,9 @@
+"""Materialize compacted Flink cart mutations into a rebuildable Redis view.
+
+This adapter owns Redis I/O only.  Flink owns cart/buy/stale-event business
+semantics, and Kafka retains the mutation log needed to rebuild Redis.
+"""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +14,7 @@ from taobao_replay.kafka import kafka_security_options
 
 
 def apply_mutation(redis_client: object, mutation: Mapping[str, object], ttl_seconds: int) -> None:
+    """Apply one deterministic UPSERT or DELETE to a user's Redis cart hash."""
     operation = str(mutation["operation"])
     user_id = int(mutation["user_id"])
     item_id = int(mutation["item_id"])
@@ -29,6 +36,7 @@ def apply_mutation(redis_client: object, mutation: Mapping[str, object], ttl_sec
 
 
 def main() -> None:
+    """Consume mutations synchronously and commit Kafka offsets after Redis succeeds."""
     from confluent_kafka import Consumer
     from redis import Redis
 

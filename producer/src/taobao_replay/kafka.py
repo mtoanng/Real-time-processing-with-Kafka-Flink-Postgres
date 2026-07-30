@@ -1,3 +1,9 @@
+"""Kafka/Schema Registry transport for external replay and optional HTTP ingress.
+
+This module publishes the upstream behavior contract. It is intentionally kept
+outside the Flink job so client simulation and processing are separate.
+"""
+
 from __future__ import annotations
 
 import json
@@ -13,6 +19,8 @@ DEFAULT_TOPIC = "user-behavior-events"
 
 
 class ProducerLike(Protocol):
+    """Small producer surface used to unit-test publishing without Kafka."""
+
     def produce(self, **kwargs: object) -> None: ...
 
     def poll(self, timeout: float) -> object: ...
@@ -21,14 +29,17 @@ class ProducerLike(Protocol):
 
 
 def event_to_avro(event: UserBehaviorEvent, _context: object = None) -> dict[str, str | int]:
+    """Adapt the portable event contract to the Avro serializer callback."""
     return event.to_dict()
 
 
 def kafka_key(event: UserBehaviorEvent) -> str:
+    """Partition behavior events by user without changing event identity."""
     return str(event.user_id)
 
 
 def kafka_security_options(environment: Mapping[str, str]) -> dict[str, str]:
+    """Render either local PLAINTEXT or managed SASL_SSL client settings."""
     protocol = environment.get("KAFKA_SECURITY_PROTOCOL", "PLAINTEXT").strip().upper()
     if protocol not in {"PLAINTEXT", "SASL_SSL"}:
         raise ValueError("KAFKA_SECURITY_PROTOCOL must be PLAINTEXT or SASL_SSL")
@@ -68,6 +79,7 @@ def kafka_security_options(environment: Mapping[str, str]) -> dict[str, str]:
 
 
 def _load_schema_registry_client() -> tuple[type[Any], type[Any], type[Any], type[Any]]:
+    """Load optional Kafka dependencies only when a real publisher is requested."""
     try:
         from confluent_kafka import SerializingProducer
         from confluent_kafka.schema_registry import SchemaRegistryClient
@@ -87,6 +99,7 @@ def build_schema_registry_producer(
     schema_path: Path,
     environment: Mapping[str, str] | None = None,
 ) -> ProducerLike:
+    """Build an idempotent Avro producer that uses the committed schema contract."""
     if not bootstrap_servers.strip():
         raise ValueError("bootstrap_servers must not be blank")
     if not schema_registry_url.strip():
@@ -123,6 +136,8 @@ def build_schema_registry_producer(
 
 
 class KafkaEventPublisher:
+    """Publish behavior events and surface broker acknowledgement failures."""
+
     def __init__(self, producer: ProducerLike, *, topic: str = DEFAULT_TOPIC) -> None:
         if not topic.strip():
             raise ValueError("topic must not be blank")
@@ -132,6 +147,8 @@ class KafkaEventPublisher:
         self._lock = threading.Lock()
 
     def publish(self, event: UserBehaviorEvent) -> None:
+        """Queue one event; callers must later flush or use ``publish_confirmed``."""
+
         def delivered(error: object, _message: object) -> None:
             if error is not None:
                 self._delivery_errors.append(str(error))
@@ -151,6 +168,7 @@ class KafkaEventPublisher:
             self.close(timeout)
 
     def close(self, timeout: float = 30.0) -> None:
+        """Flush pending records and turn delivery errors into a caller-visible failure."""
         remaining = self._producer.flush(timeout)
         if remaining:
             raise RuntimeError(f"Kafka flush timed out with {remaining} message(s) pending")

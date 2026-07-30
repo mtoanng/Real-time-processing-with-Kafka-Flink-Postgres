@@ -1,5 +1,6 @@
--- Relational business rules. Product catalog does not enrich or alter the
--- source-faithful behavior branch.
+-- First relational stage. Invalid records are not discarded: the PyFlink
+-- router converts them into durable quality events. Product catalog does not
+-- enrich or alter this source-faithful behavior branch.
 CREATE TEMPORARY VIEW classified_events AS
 SELECT
     event_id,

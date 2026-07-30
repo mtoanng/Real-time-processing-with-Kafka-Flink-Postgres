@@ -1,3 +1,9 @@
+"""Pure business rules shared by stateful PyFlink operators and unit tests.
+
+Keeping these functions free of Flink types makes event and cart semantics easy
+to test without a cluster.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -14,6 +20,7 @@ def validation_reason(
     behavior_type: str | None,
     event_time_ms: int,
 ) -> str | None:
+    """Return a stable reason code, or ``None`` when an event is valid."""
     if not event_id or not event_id.strip():
         return "INVALID_EVENT_ID"
     if user_id <= 0 or item_id <= 0 or category_id <= 0:
@@ -32,6 +39,7 @@ def quality_event_id(
     source_sequence: int,
     reason_code: str,
 ) -> str:
+    """Create deterministic audit identity for an invalid, duplicate or late event."""
     canonical = "|".join(
         (quality_type, event_id or "", replay_run_id, str(source_sequence), reason_code)
     )
@@ -40,6 +48,8 @@ def quality_event_id(
 
 @dataclass(frozen=True)
 class CartState:
+    """Last known state for one ``(user_id, item_id)`` cart projection key."""
+
     category_id: int
     added_at_ms: int
     last_event_time_ms: int
@@ -49,6 +59,8 @@ class CartState:
 
 @dataclass(frozen=True)
 class CartMutation:
+    """Idempotent change to publish to the compacted cart-mutation topic."""
+
     operation: str
     user_id: int
     item_id: int
@@ -67,6 +79,11 @@ def apply_cart_event(
     event_time_ms: int,
     source_sequence: int,
 ) -> tuple[CartState | None, CartMutation | None]:
+    """Apply cart/buy semantics while rejecting stale event-time transitions.
+
+    ``source_sequence`` is the deterministic tie-breaker for equal event times;
+    it is not an instruction to reorder the source replay.
+    """
     if behavior_type not in {"cart", "buy"}:
         return current, None
     event_order = (event_time_ms, source_sequence)

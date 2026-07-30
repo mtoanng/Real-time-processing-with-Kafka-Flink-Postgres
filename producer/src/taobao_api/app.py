@@ -1,3 +1,10 @@
+"""Optional thin HTTP boundary for external event ingress and serving reads.
+
+The API re-computes event identity before publishing to the same Kafka contract
+as the replay client. It reads Redis cart state and ClickHouse analytics; it
+does not contain Flink business logic.
+"""
+
 from __future__ import annotations
 
 import os
@@ -16,6 +23,8 @@ def create_app(
     publisher: ConfirmedPublisher | None = None,
     serving: ServingStore | None = None,
 ) -> FastAPI:
+    """Create a testable API with optional injected Kafka and serving adapters."""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if publisher is None:

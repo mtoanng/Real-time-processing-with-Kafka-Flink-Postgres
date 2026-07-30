@@ -1,3 +1,5 @@
+"""HTTP ingress contract that prevents callers from choosing event identity."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -7,6 +9,8 @@ from taobao_replay.contracts import UserBehaviorEvent, deterministic_event_id
 
 
 class BehaviorEventRequest(BaseModel):
+    """External event payload; any supplied ID must match recomputed source identity."""
+
     model_config = ConfigDict(extra="forbid", strict=True)
 
     event_id: str | None = None
@@ -19,6 +23,7 @@ class BehaviorEventRequest(BaseModel):
     replay_run_id: str
 
     def validated_event(self) -> UserBehaviorEvent:
+        """Return the Kafka event after enforcing source fields and deterministic ID."""
         if self.event_time_ms < 0 or self.event_time_ms % 1_000:
             raise ValueError("event_time_ms must be a non-negative whole second")
         if self.source_sequence < 0:
@@ -48,4 +53,6 @@ class BehaviorEventRequest(BaseModel):
 
 
 class ConfirmedPublisher(Protocol):
+    """Kafka publishing boundary used by the API and lightweight tests."""
+
     def publish_confirmed(self, event: UserBehaviorEvent) -> None: ...
