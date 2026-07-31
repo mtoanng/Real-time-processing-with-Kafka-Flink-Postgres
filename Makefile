@@ -1,8 +1,8 @@
-.PHONY: checks start replay verify snapshot recovery-test catalog-generate catalog-load stop
+.PHONY: checks terraform-check start replay verify snapshot recovery-test catalog-generate catalog-load stop
 SHELL := bash
 CATALOG_SOURCE ?= data/UserBehavior.csv
 
-checks:
+checks: terraform-check
 	PYTHONPATH=producer/src python -m unittest discover -s producer/tests -v
 	ruff check producer scripts flink-python-pipeline
 	ruff format --check producer scripts flink-python-pipeline
@@ -11,6 +11,11 @@ checks:
 	mvn -B package -DskipTests
 	docker compose -f infra/docker-compose.yml --profile core config --quiet
 	docker compose -f infra/docker-compose.yml --profile core --profile catalog --profile api config --quiet
+
+terraform-check:
+	terraform -chdir=infra/terraform init -backend=false -input=false
+	terraform -chdir=infra/terraform fmt -check -recursive
+	terraform -chdir=infra/terraform validate
 
 start:
 	bash scripts/start.sh

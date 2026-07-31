@@ -53,15 +53,19 @@ make verify
 make stop
 ```
 
-For a repeatable AWS EC2 deployment and recovery procedure, follow
-[the runbook](docs/RUNBOOK.md). Operational checks, rollback, secrets and the
-self-hosted EC2 boundary are in [operations](docs/OPERATIONS.md).
+Terraform provisions the single AWS EC2 host reproducibly; it does not deploy
+the application or create managed data services. Follow
+[the Terraform host guide](docs/TERRAFORM_AWS.md), then
+[the E2E runbook](docs/RUNBOOK.md). Operational checks, rollback, secrets and
+the self-hosted EC2 boundary are in [operations](docs/OPERATIONS.md).
 
-The standard remote path is GitHub Actions followed by one small SSH deployment
-script. After checks pass, a protected `aws-demo` environment deploys the exact
-Git commit, builds SHA-tagged runtime images on EC2, and starts Compose. This
-intentionally avoids a container registry and extra AWS control-plane services
-for the single-host portfolio deployment.
+The optional remote release path is GitHub Actions followed by one small SSH
+deployment script. After checks pass, a protected `aws-demo` environment can
+deploy the exact Git commit, build SHA-tagged runtime images on EC2, and start
+Compose. Enable it only after choosing an SSH network-access model that does
+not expose the host broadly; the Terraform default permits only the operator's
+workstation. This intentionally avoids a container registry and extra AWS
+control-plane services for the single-host portfolio deployment.
 
 The Flink Python image is intentionally not built during `make checks`; it is
 large and requires a disposable EC2 host. The committed ClickHouse Kafka Engine

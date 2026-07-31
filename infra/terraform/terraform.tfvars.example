@@ -1,0 +1,8 @@
+# Copy this file to terraform.tfvars. It is ignored by Git.
+# The CIDR must be your current public workstation address, not a private LAN IP.
+aws_region           = "ap-southeast-2"
+project_name         = "taobao-streaming-demo"
+instance_type        = "m6i.xlarge"
+root_volume_size_gib = 80
+admin_ssh_cidr       = "203.0.113.10/32"
+admin_ssh_public_key = "ssh-ed25519 AAAA... replace-with-your-public-key workstation"

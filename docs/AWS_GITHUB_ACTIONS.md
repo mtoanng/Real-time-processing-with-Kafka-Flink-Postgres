@@ -16,8 +16,9 @@ push main or manual dispatch
 -> Docker Compose start and health checks
 ```
 
-There is no image registry, AWS access key, Terraform apply, Systems Manager or
-deployment framework in this path.
+Terraform provisions the single EC2 host separately; see
+[Terraform on AWS](TERRAFORM_AWS.md). There is no image registry, Terraform
+apply in CI, Systems Manager or deployment framework in this release path.
 
 ## 1. Prepare the EC2 deploy user
 

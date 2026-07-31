@@ -15,15 +15,62 @@ The preferred repeatable release path is the GitHub Actions + SSH workflow
 documented in [AWS_GITHUB_ACTIONS.md](AWS_GITHUB_ACTIONS.md). The manual host
 steps below remain the bootstrap, troubleshooting and verification path.
 
-## 1. Launch and secure the EC2 host
+## 1. Provision and secure the EC2 host
 
-In the AWS EC2 console, launch a current Ubuntu LTS x86_64 instance in the VPC
-you control. This is a bounded demo, not a sizing benchmark: choose
-an instance and EBS volume with enough CPU, memory and disk for Docker images
-and the complete Compose stack; do not treat a free-tier-sized host as a
-supported capacity target.
+The preferred provisioning route is the committed Terraform configuration in
+[`infra/terraform`](../infra/terraform), not a hand-created console instance.
+Follow [Terraform on AWS](TERRAFORM_AWS.md) through its bootstrap section, then
+return here at step 3. Terraform creates only the single host and its network
+prerequisites; it does not start the streaming stack or run a replay.
 
-Create a security group with one inbound rule:
+Use this exact **bounded-fixture E2E configuration** in the AWS EC2 console.
+It is sized for the committed fixture and recovery experiment, not for a
+throughput benchmark, production high availability, or an unmeasured full
+`UserBehavior.csv` replay.
+
+| Console setting | Required value | Why |
+| --- | --- | --- |
+| Region | `ap-southeast-2` (Sydney) | Keeps the deployment in the region used for this project. |
+| AMI | Ubuntu Server 24.04 LTS, x86_64 | Supported by the Docker installation commands below and by the x86_64 images. |
+| Instance type | `m6i.xlarge` - 4 vCPU, 16 GiB RAM | The core Compose profile has one Kafka broker/partition, Flink parallelism 1 and two TaskManager slots. This is sufficient for the committed fixture E2E run. |
+| Fallback instance | `m7i.xlarge` - 4 vCPU, 16 GiB RAM | Use only if the primary type is unavailable in the selected AZ. |
+| Root EBS volume | `80 GiB`, `gp3`, default `3,000 IOPS` and `125 MiB/s` | Enough for Ubuntu, current Docker images/build cache, bounded Kafka/ClickHouse volumes and Flink checkpoints. |
+| Public IPv4 / Elastic IP | One stable public address | Required for workstation SSH and the GitHub Environment host variable. Associate an EC2 Elastic IP directly; do not create a NAT Gateway. |
+| Key pair | One new ED25519 key pair | Manual bootstrap/admin access only. The GitHub deployment uses a separate deploy key. |
+
+Do not use a free-tier-sized instance. A `t3.xlarge` may work for ad-hoc
+experimentation but is not the prescribed E2E target because sustained CPU and
+memory headroom are less predictable. Your recorded `Standard On-Demand` quota
+of 8 vCPUs permits this 4-vCPU host (and leaves 4 vCPUs available). Your 50-TiB
+gp3 quota is sufficient for this 80-GiB volume. gp3's included
+baseline is 3,000 IOPS and 125 MiB/s, which is sufficient for this bounded
+demo. [AWS gp3 performance](https://docs.aws.amazon.com/ebs/latest/userguide/general-purpose.html)
+
+After launch, verify free disk before cloning the repository. Keep at least
+20 GiB free for image rebuilds and checkpoint/replay evidence:
+
+```bash
+df -h /
+docker system df
+```
+
+### Full 2-GB source replay is a separate capacity experiment
+
+Do not choose a larger host merely because the source CSV is about 2 GB; raw
+file size is not the controlling memory value. The current job retains a
+deduplication state entry for each distinct `event_id` for
+`FLINK_DEDUP_RETENTION_HOURS` (default: 168 hours). A fast full replay can
+therefore retain far more state than the CSV size suggests. The full-source
+catalog section later in this runbook generates catalog metadata only; it does
+not certify a full-source core replay.
+
+Run the bounded E2E fixture on `m6i.xlarge` first. If you later approve a
+full-source replay, capture Flink state size, container memory and disk use,
+then resize to `m6i.2xlarge` / 32 GiB only if those measurements require it.
+Until that experiment is recorded, full-source capacity is **NOT VERIFIED**.
+
+Create a security group with this baseline. The application ports stay private
+because Compose binds them to `127.0.0.1`.
 
 | Port | Source | Reason |
 | --- | --- | --- |
@@ -38,6 +85,20 @@ guide](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/creating-security-gro
 For GitHub Actions deployment, complete the dedicated deploy-key, pinned
 host-key and protected environment setup in
 [AWS_GITHUB_ACTIONS.md](AWS_GITHUB_ACTIONS.md).
+
+Important: a GitHub-hosted runner does not have one fixed source IP. Therefore
+the current SSH-based Actions workflow cannot reach an instance whose port 22
+is restricted only to your `/32`. Keep the `/32` rule for manual deployment.
+Before enabling GitHub-hosted deployment, choose and document one access model:
+
+1. temporarily allow the GitHub runner ranges on TCP 22 for a short-lived demo;
+   or
+2. replace the hosted-runner SSH hop with a separately approved private runner
+   or AWS Systems Manager design.
+
+Do not open TCP 22 to `0.0.0.0/0` merely to make the workflow pass. AWS
+recommends restricting remote access to specific trusted addresses or ranges.
+[AWS security-group guidance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/creating-security-group.html)
 
 Connect from your workstation:
 
@@ -56,7 +117,7 @@ Engine and the Compose plugin from Docker's official APT repository:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl git maven openjdk-17-jdk python3
+sudo apt-get install -y ca-certificates curl git maven openjdk-17-jdk python3 awscli
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
@@ -109,12 +170,20 @@ git clone https://github.com/mtoanng/Kafka-Flink-ClickHouse-Pipeline.git
 cd Kafka-Flink-ClickHouse-Pipeline
 git checkout refactor/python-sql-preserve-architecture
 git status --short
-cp .env.example .env
 ```
 
-`git status --short` must be empty before deployment. Edit only `.env`; do not
-commit it. Keep the local defaults for this Compose profile. `KAFKA_SOURCE_BOUNDED`
-must remain `false` for the normal start-then-replay sequence.
+If the host was created with Terraform, link its separately provisioned runtime
+configuration instead of creating a second `.env` file:
+
+```bash
+ln -sfn "$HOME/taobao-streaming/shared/.env" .env
+```
+
+For the manual-console route only, use `cp .env.example .env` and edit that
+local file. In both cases, `git status --short` must be empty before
+deployment. Do not commit `.env`. Keep the local defaults for this Compose
+profile. `KAFKA_SOURCE_BOUNDED` must remain `false` for the normal
+start-then-replay sequence.
 
 ## 5. Run credential-independent gates
 
