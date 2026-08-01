@@ -1,18 +1,32 @@
 # Architecture
 
-The job uses Table/SQL for relational transformations and PyFlink keyed
-operators for stateful event processing. Kafka/Avro connector I/O runs through
-the Flink runtime and packaged connector dependencies.
+The active behavior job is one native Flink Table/SQL plan submitted by a thin
+Python runner. Kafka/Avro connector I/O, validation, bounded deduplication,
+watermarks, streaming Top-1 state and windows execute in the Flink JVM runtime.
 
-The accepted stream uses Flink's built-in bounded-out-of-orderness watermark
-strategy. Late classification is relative to the watermark actually emitted
-by the runtime; the exact bounded-fixture timing therefore remains a live
-verification item.
+The replay executable under `clients/` is an external workload generator. It
+is not part of the deployed processing DAG. Runtime adapters live under
+`services/`, while `libs/taobao_events` owns the only shared ingress contract;
+runtime services never import the replay client.
 
-PyFlink keyed operators cross the Python worker boundary, so they add CPU and
-serialization overhead relative to JVM operators. No throughput or latency
-claim is made until the remote bounded run is measured. SQL planning and
-connector I/O remain inside Flink.
+```text
+Python replay/API -> Kafka Avro -> Flink Table/SQL
+  -> raw, metric and quality Kafka contracts -> ClickHouse
+  -> user feature snapshots -> ClickHouse history + Redis latest features
+  -> compacted latest-cart mutations -> Python adapter -> Redis
+```
+
+The Kafka Table source defines a bounded-out-of-orderness watermark and uses
+Flink 1.20's `scan.watermark.emit.strategy='on-event'`. Late classification is
+therefore driven by event arrival rather than Python bundle or periodic timer
+timing. SQL `ROW_NUMBER` retains the first `event_id` within the configured
+Table state TTL. Individual duplicate audit rows are not emitted; reconciliation
+derives their count from valid input and accepted unique output.
+
+No Python UDF or DataStream callback exists in the record path. This removes
+the Beam worker serialization boundary while retaining Python for submission,
+replay, serving adapters and verification. No throughput or latency claim is
+made until the remote run is measured.
 
 Product catalog CDC is isolated current-state replication:
 PostgreSQL -> Debezium -> Kafka -> ClickHouse Kafka Engine. It bypasses Flink
@@ -26,6 +40,9 @@ ambiguity in the manifest. Synthetic product names and prices are never
 presented as fields from the Alibaba dataset and never alter canonical behavior
 or metric attribution.
 
-The Redis adapter and ClickHouse Kafka Engine tables are delivery adapters, not
-additional business-processing systems. Flink still computes canonical
-classification, metrics and cart mutations.
+The Redis adapters and ClickHouse Kafka Engine tables are delivery adapters,
+not additional business-processing systems. Flink SQL computes canonical
+classification, metrics, one-minute user features and latest cart mutations.
+The feature topic is append-only: ClickHouse consumes every closed snapshot as
+offline history, while an independent Redis consumer atomically rejects any
+snapshot whose `feature_version` is not newer than the currently served value.

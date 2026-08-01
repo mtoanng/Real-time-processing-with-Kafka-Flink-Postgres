@@ -43,10 +43,10 @@ high-availability orchestration.
 
 ## What a successful local-smoke run proves
 
-- The fixture can travel through Kafka/Avro, the one SQL/PyFlink job and the
+- The fixture can travel through Kafka/Avro, the one Table/SQL job and the
   ClickHouse/Redis materializers.
-- Canonical raw, metrics, quality and active-cart results match the committed
-  fixture contract.
+- Canonical raw, metrics, quality, offline feature history, online Redis
+  features and active-cart results match the committed fixture contract.
 - It does not prove cloud connectivity, sustained throughput, global
   exactly-once delivery or a production security posture.
 
@@ -75,6 +75,16 @@ Use canonical ClickHouse views only:
 curl -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-local-clickhouse}" \
   'http://localhost:8123/?database=taobao_behavior' \
   --data-binary 'SELECT count() FROM raw_behavior_events_canonical'
+```
+
+Inspect feature materialization independently:
+
+```bash
+curl -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-local-clickhouse}" \
+  'http://localhost:8123/?database=taobao_behavior' \
+  --data-binary 'SELECT count() FROM user_features_1m_canonical'
+docker compose -f infra/docker-compose.yml exec -T redis \
+  redis-cli HGETALL 'taobao:features:user:{1}'
 ```
 
 For a full-dataset catalog, retain

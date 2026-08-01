@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 IFS=, read -ra run_ids <<<"${REPLAY_RUN_IDS:-golden-a,golden-b}"
 for run_id in "${run_ids[@]}"; do
-  PYTHONPATH=producer/src python -m taobao_replay publish \
+  PYTHONPATH=clients:services:tools:libs python -m taobao_replay publish \
     tests/fixtures/user_behavior_fixture.csv \
     --run-id "$run_id" \
     --batch-size "${REPLAY_BATCH_SIZE:-100}" \

@@ -64,6 +64,43 @@ SELECT
     ingested_at
 FROM taobao_behavior.item_metrics_1m FINAL;
 
+-- Offline feature history. The same closed event-time snapshots are also
+-- materialized to Redis as the latest online feature vector per user.
+CREATE TABLE IF NOT EXISTS taobao_behavior.user_features_1m (
+    feature_id String,
+    window_start DateTime64(3, 'UTC'),
+    window_end DateTime64(3, 'UTC'),
+    user_id UInt64,
+    event_count UInt64,
+    pv_count UInt64,
+    cart_count UInt64,
+    fav_count UInt64,
+    buy_count UInt64,
+    distinct_items UInt64,
+    feature_version UInt64,
+    record_version UInt64,
+    ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(record_version)
+PARTITION BY toYYYYMM(window_start)
+ORDER BY (window_start, user_id);
+
+CREATE VIEW IF NOT EXISTS taobao_behavior.user_features_1m_canonical AS
+SELECT
+    feature_id,
+    window_start,
+    window_end,
+    user_id,
+    event_count,
+    pv_count,
+    cart_count,
+    fav_count,
+    buy_count,
+    distinct_items,
+    feature_version,
+    ingested_at
+FROM taobao_behavior.user_features_1m FINAL;
+
 CREATE TABLE IF NOT EXISTS taobao_behavior.stream_quality_events (
     quality_event_id String,
     quality_type LowCardinality(String),
@@ -101,7 +138,7 @@ SELECT
     observed_at
 FROM taobao_behavior.stream_quality_events FINAL;
 
--- SQL/PyFlink writes replay-safe JSON contracts to Kafka. These Kafka Engine
+-- Flink SQL writes replay-safe JSON contracts to Kafka. These Kafka Engine
 -- tables are platform adapters; canonical storage remains ReplacingMergeTree.
 CREATE TABLE IF NOT EXISTS taobao_behavior.raw_behavior_events_queue (
     event_id String, user_id Int64, item_id Int64, category_id Int64,
@@ -143,6 +180,31 @@ SELECT parseDateTime64BestEffort(window_start, 3, 'UTC') AS window_start,
     toUInt64(unique_users) AS unique_users, replay_run_id,
     toUInt64(record_version) AS record_version, now64(3) AS ingested_at
 FROM taobao_behavior.item_metrics_1m_queue;
+
+CREATE TABLE IF NOT EXISTS taobao_behavior.user_features_1m_queue (
+    feature_id String, window_start String, window_end String, user_id Int64,
+    event_count Int64, pv_count Int64, cart_count Int64, fav_count Int64,
+    buy_count Int64, distinct_items Int64, feature_version Int64,
+    record_version Int64
+) ENGINE = Kafka SETTINGS
+    kafka_broker_list = 'kafka:29092',
+    kafka_topic_list = 'taobao-user-features-1m',
+    kafka_group_name = 'clickhouse-taobao-user-features-v1',
+    kafka_format = 'JSONEachRow',
+    kafka_num_consumers = 1;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS taobao_behavior.user_features_1m_ingest
+TO taobao_behavior.user_features_1m AS
+SELECT feature_id,
+    parseDateTime64BestEffort(window_start, 3, 'UTC') AS window_start,
+    parseDateTime64BestEffort(window_end, 3, 'UTC') AS window_end,
+    toUInt64(user_id) AS user_id, toUInt64(event_count) AS event_count,
+    toUInt64(pv_count) AS pv_count, toUInt64(cart_count) AS cart_count,
+    toUInt64(fav_count) AS fav_count, toUInt64(buy_count) AS buy_count,
+    toUInt64(distinct_items) AS distinct_items,
+    toUInt64(feature_version) AS feature_version,
+    toUInt64(record_version) AS record_version, now64(3) AS ingested_at
+FROM taobao_behavior.user_features_1m_queue;
 
 CREATE TABLE IF NOT EXISTS taobao_behavior.stream_quality_events_queue (
     quality_event_id String, quality_type String, event_id Nullable(String),

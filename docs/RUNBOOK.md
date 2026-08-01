@@ -246,13 +246,31 @@ services.
 
 ## 6. Build and start the core
 
+The Table/SQL graph is state-incompatible with the retired mixed
+DataStream/Table graph. For its first smoke deployment, remove the old demo
+volumes after copying any evidence you need. This does not delete the host-side
+`data/UserBehavior.csv` file:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile core --profile catalog \
+  --profile api down -v --remove-orphans
+```
+
 ```bash
 STARTUP_TIMEOUT_SECONDS=180 bash scripts/start.sh
 ```
 
 The script packages the connector bundle, starts Kafka, Schema Registry,
-ClickHouse, Redis, the Redis materializer, Flink JobManager/TaskManager,
-creates topics, registers Avro and submits one detached SQL/PyFlink job.
+ClickHouse, Redis, the cart and online-feature materializers, Flink JobManager/TaskManager,
+creates topics, registers Avro and submits one detached Flink Table/SQL job
+from the thin Python runner.
+
+`start.sh` also applies the idempotent ClickHouse schema after its health check,
+so a retained ClickHouse volume receives newly added tables. The destructive
+volume reset above remains necessary for the first migration from the retired
+Flink job graph because its checkpoint topology is incompatible.
+The feature-enabled job also uses the versioned consumer group
+`taobao-table-sql-features-v1`; do not override it with the retired group.
 
 Verify the control plane before sending data:
 
@@ -269,23 +287,117 @@ inspect logs; do not replay input into a failed job.
 
 ```bash
 REPLAY_RUN_IDS=golden-a,golden-b bash scripts/replay.sh
-PYTHONPATH=producer/src python scripts/verify.py
+sleep 15
+PYTHONPATH=clients:services:tools:libs python scripts/verify.py
 ```
 
+The short wait allows the Kafka-backed ClickHouse and Redis materializers to
+drain the fixture; it is not part of event-time semantics. If verification
+still fails, inspect offsets and service health instead of increasing the wait
+indefinitely.
+
 The verifier independently compares canonical raw events, one-minute metrics,
-quality evidence and Redis active-cart state with committed fixture outputs.
-It fails with a labelled expected/actual diff.
+quality evidence, ClickHouse user-feature history, Redis latest features and
+Redis active-cart state with committed fixture outputs. It fails with a
+labelled expected/actual diff.
+
+Confirm both feature consumers have output before accepting the run:
+
+```bash
+docker exec taobao-runtime-kafka-1 /opt/kafka/bin/kafka-get-offsets.sh \
+  --bootstrap-server localhost:9092 --topic taobao-user-features-1m
+curl -fsS 'http://localhost:8123/?database=taobao_behavior' \
+  --data-binary 'SELECT count() FROM user_features_1m_canonical'
+docker compose -f infra/docker-compose.yml exec -T redis \
+  redis-cli HGETALL 'taobao:features:user:{1}'
+```
+
+For the golden fixture, the Kafka and ClickHouse feature counts must be `2`,
+and the Redis hash must contain `feature_version=1511658060000`.
 
 If the run is successful, capture an uninterrupted snapshot for recovery:
 
 ```bash
-PYTHONPATH=producer/src python scripts/verify.py \
+PYTHONPATH=clients:services:tools:libs python scripts/verify.py \
   --snapshot artifacts/uninterrupted.json --snapshot-only
 ```
 
-The current late-event fixture expectation is a live verification item because
-the active pipeline uses periodic built-in watermarks. Record the actual
-result; do not alter golden data merely to make a service run pass.
+The Kafka source emits its bounded-out-of-orderness watermark on every event,
+so the committed out-of-order fixture has deterministic late classification.
+The verifier must match the committed result without editing golden data.
+Because the deployed source is unbounded, the final minute remains open until
+a later event advances the watermark; the golden verifier checks only windows
+that the fixture itself closes.
+
+### 7.1 Full-source capacity run
+
+Run this only after the bounded fixture passes and its evidence is copied.
+Fixture rows must not be mixed with full-source evidence. Reset Docker runtime
+volumes, then rebuild; the host file `data/UserBehavior.csv` is not inside a
+Docker volume and is not deleted:
+
+```bash
+test -s data/UserBehavior.csv
+docker compose -f infra/docker-compose.yml --profile core --profile catalog \
+  --profile api down -v --remove-orphans
+STARTUP_TIMEOUT_SECONDS=180 bash scripts/start.sh
+```
+
+The host replay client needs its Kafka extras even though the core runtime
+services are already containers:
+
+```bash
+source .venv/bin/activate
+python -m pip install -e '.[kafka]'
+mkdir -p artifacts/full-e2e
+started_epoch="$(date +%s)"
+PYTHONPATH=clients:services:tools:libs python -m taobao_replay publish \
+  data/UserBehavior.csv \
+  --run-id full-scale-a \
+  --batch-size 5000 \
+  --speed 0 \
+  --invalid-output artifacts/full-e2e/producer-rejected.jsonl \
+  --force 2>&1 | tee artifacts/full-e2e/producer.log
+printf '%s\n' "$(( $(date +%s) - started_epoch ))" \
+  | tee artifacts/full-e2e/replay-elapsed-seconds.txt
+```
+
+The publish command is foreground work and may run for a long time. Monitor
+from a second SSH terminal without interrupting it:
+
+```bash
+curl -fsS http://localhost:8082/jobs/overview
+docker exec taobao-runtime-kafka-1 \
+  /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 --all-groups --describe
+docker stats --no-stream
+df -h /
+```
+
+After publishing finishes, wait until the Flink source group and the
+ClickHouse/Redis output consumer groups have zero lag. Capture independent
+materialization counts:
+
+```bash
+curl -fsS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-local-clickhouse}" \
+  'http://localhost:8123/?database=taobao_behavior' --data-binary \
+  'SELECT count() FROM raw_behavior_events_canonical'
+curl -fsS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-local-clickhouse}" \
+  'http://localhost:8123/?database=taobao_behavior' --data-binary \
+  'SELECT count() FROM item_metrics_1m_canonical'
+curl -fsS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-local-clickhouse}" \
+  'http://localhost:8123/?database=taobao_behavior' --data-binary \
+  'SELECT count() FROM user_features_1m_canonical'
+curl -fsS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-local-clickhouse}" \
+  'http://localhost:8123/?database=taobao_behavior' --data-binary \
+  'SELECT quality_type, count() FROM stream_quality_events_canonical GROUP BY quality_type ORDER BY quality_type'
+```
+
+Do not run the golden fixture verifier against this state: it intentionally
+expects exactly twelve fixture rows replayed twice. For full-source evidence,
+retain the producer summary, consumer-group lags, canonical counts, completed
+checkpoint JSON and resource statistics. The final event-time minute can remain
+open, so metric and feature-row counts are not expected to equal raw count.
 
 ## 8. Verify a completed checkpoint
 
@@ -313,7 +425,7 @@ docker compose -f infra/docker-compose.yml --profile core --profile catalog \
   up -d postgres kafka-connect
 POSTGRES_PASSWORD=local-catalog python scripts/register_connector.py
 bash scripts/update_catalog.sh
-PYTHONPATH=producer/src python scripts/verify.py --with-catalog
+PYTHONPATH=clients:services:tools:libs python scripts/verify.py --with-catalog
 ```
 
 ### Full Taobao dataset catalog
@@ -330,7 +442,7 @@ ambiguous products.
 Keep the downloaded dataset outside Git at `data/UserBehavior.csv`, then run:
 
 ```bash
-PYTHONPATH=producer/src python -m taobao_catalog data/UserBehavior.csv
+PYTHONPATH=clients:services:tools:libs python -m taobao_catalog data/UserBehavior.csv
 cat artifacts/product_catalog_manifest.json
 docker compose -f infra/docker-compose.yml --profile catalog up -d postgres
 bash scripts/load_product_catalog.sh \
@@ -375,6 +487,7 @@ does not enrich behavior history or change the metric source-category grain.
 docker compose -f infra/docker-compose.yml --profile core --profile api up -d api
 curl -fsS http://localhost:8000/health
 curl -fsS 'http://localhost:8000/v1/users/1/cart'
+curl -fsS 'http://localhost:8000/v1/users/1/features'
 curl -fsS 'http://localhost:8000/v1/products/trending?minutes=15&as_of_ms=1511658120000'
 ```
 
@@ -404,7 +517,8 @@ This is not yet verified by repository evidence.
 
 ## 12. Collect evidence and teardown
 
-Save command output, Flink checkpoint JSON and canonical snapshots under
+Save command output, Flink checkpoint JSON, canonical snapshots and the Redis
+feature hash under
 `docs/evidence/final-e2e/` before teardown. That directory is intentionally
 empty until a real run occurs.
 

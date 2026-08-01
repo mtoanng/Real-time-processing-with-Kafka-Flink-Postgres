@@ -52,9 +52,13 @@ def render_tables(config: PipelineConfig) -> str:
         "BEHAVIOR_TOPIC": config.behavior_topic,
         "RAW_TOPIC": config.raw_topic,
         "METRICS_TOPIC": config.metrics_topic,
+        "USER_FEATURES_TOPIC": config.user_features_topic,
         "QUALITY_TOPIC": config.quality_topic,
         "CART_MUTATION_TOPIC": config.cart_mutation_topic,
         "CONSUMER_GROUP": config.consumer_group,
+        "WATERMARK_DELAY_SECONDS": (
+            f"{config.max_out_of_orderness_ms / 1_000:.3f}".rstrip("0").rstrip(".")
+        ),
         "BEHAVIOR_BOUNDED_OPTION": bounded,
         "SOURCE_SECURITY_OPTIONS": _kafka_security_options(config, schema_registry=True),
         "KAFKA_SECURITY_OPTIONS": _kafka_security_options(config, schema_registry=False),
@@ -64,6 +68,7 @@ def render_tables(config: PipelineConfig) -> str:
         "BEHAVIOR_BOUNDED_OPTION",
         "SOURCE_SECURITY_OPTIONS",
         "KAFKA_SECURITY_OPTIONS",
+        "WATERMARK_DELAY_SECONDS",
     }
     rendered = PLACEHOLDER.sub(
         lambda match: (

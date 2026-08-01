@@ -10,6 +10,22 @@
       }
     ]
   },
+  "features": {
+    "user_id": 1,
+    "available": true,
+    "features": {
+      "feature_version": 1511658060000,
+      "feature_id": "38c38b848ae4916330b95a1bf40d3d77ad5a4bae0e1afb2d72700e7896c9aa56",
+      "window_start": "2017-11-26 01:00:00.000",
+      "window_end": "2017-11-26 01:01:00.000",
+      "event_count": 5,
+      "pv_count": 1,
+      "cart_count": 3,
+      "fav_count": 0,
+      "buy_count": 1,
+      "distinct_items": 2
+    }
+  },
   "trending": {
     "window_minutes": 15,
     "as_of_ms": 1511658120000,

@@ -1,7 +1,13 @@
 *
 !pyproject.toml
-!producer/
-!producer/**
+!clients/
+!clients/**
+!libs/
+!libs/**
+!services/
+!services/**
+!tools/
+!tools/**
 !schemas/
 !schemas/**
 !pom.xml

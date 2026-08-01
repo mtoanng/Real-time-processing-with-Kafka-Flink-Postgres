@@ -2,12 +2,14 @@
 
 This directory contains the active Flink job.
 
-- `sql/`: behavior source/sink contracts, validation and one-minute metrics
-  current-state replication.
-- `taobao_flink/operators.py`: bounded event-ID deduplication, late routing and
-  active-cart keyed state.
-- `taobao_flink/job.py`: attaches SQL sinks and DataStream operators to one
-  `StreamExecutionEnvironment`.
+- `sql/`: source/sink contracts, validation, bounded deduplication, native
+  watermarks, late routing, one-minute metrics, one-minute user features and
+  latest cart state.
+- `taobao_flink/job.py`: creates a Python `TableEnvironment`, configures
+  checkpoint/restart policy and submits all SQL inserts as one `StatementSet`.
+
+No Python UDF or DataStream callback runs per event. Python is the submission
+and integration language; Flink executes the relational plan in the JVM.
 
 `flink-connectors/` packages the pinned connector dependencies used by the
 runtime image.

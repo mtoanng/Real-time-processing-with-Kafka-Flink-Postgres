@@ -21,7 +21,7 @@ until [ "$(curl -fsS "http://localhost:8082/jobs/$FLINK_JOB_ID" | python -c \
   'import json,sys; print(json.load(sys.stdin)["state"])')" = "RUNNING" ]; do
   sleep 2
 done
-PYTHONPATH=producer/src python scripts/verify.py \
+PYTHONPATH=clients:services:tools:libs python scripts/verify.py \
   --snapshot artifacts/recovered.json --snapshot-only
 python -c \
   'import json,sys; a=json.load(open(sys.argv[1])); b=json.load(open(sys.argv[2])); assert a==b' \

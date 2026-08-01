@@ -1,6 +1,7 @@
 {
   "accounting": {
     "replay_attempts": 2,
+    "source_rows": 24,
     "decoded": 24,
     "invalid": 2,
     "valid": 22,
@@ -28,30 +29,47 @@
   "metrics": [
     {"window_start":1511658000000,"item_id":100,"source_category_id":10,"pv_count":1,"cart_count":1,"fav_count":1,"buy_count":1,"unique_users":2},
     {"window_start":1511658000000,"item_id":101,"source_category_id":11,"pv_count":0,"cart_count":2,"fav_count":0,"buy_count":0,"unique_users":1},
-    {"window_start":1511658000000,"item_id":102,"source_category_id":12,"pv_count":0,"cart_count":1,"fav_count":0,"buy_count":1,"unique_users":1},
-    {"window_start":1511658060000,"item_id":100,"source_category_id":10,"pv_count":1,"cart_count":0,"fav_count":0,"buy_count":0,"unique_users":1},
-    {"window_start":1511658060000,"item_id":104,"source_category_id":14,"pv_count":1,"cart_count":0,"fav_count":0,"buy_count":0,"unique_users":1}
+    {"window_start":1511658000000,"item_id":102,"source_category_id":12,"pv_count":0,"cart_count":1,"fav_count":0,"buy_count":1,"unique_users":1}
+  ],
+  "user_features": [
+    {"feature_id":"38c38b848ae4916330b95a1bf40d3d77ad5a4bae0e1afb2d72700e7896c9aa56","window_start":1511658000000,"window_end":1511658060000,"user_id":1,"event_count":5,"pv_count":1,"cart_count":3,"fav_count":0,"buy_count":1,"distinct_items":2,"feature_version":1511658060000},
+    {"feature_id":"97994506a31e163b2422b0056534deb4fae74b8146a138209e4e482749b2da61","window_start":1511658000000,"window_end":1511658060000,"user_id":2,"event_count":3,"pv_count":0,"cart_count":1,"fav_count":1,"buy_count":1,"distinct_items":2,"feature_version":1511658060000}
   ],
   "quality": [
-    {"quality_event_id":"dedc914d5900a08c2153f44b3c7511c73770d14df6cd8068bca8642b96bc14ab","quality_type":"INVALID","event_id":"4060db5a89db1d165b0688a11682224e157970a2f858f6e715be88456ed99efa","replay_run_id":"golden-a","source_sequence":3,"reason_code":"INVALID_IDENTIFIER"},
-    {"quality_event_id":"1eda73f9e92e9a3bb70a4e78bdfea7d4f829ac22bca5a609d7b43b1d80d75f58","quality_type":"LATE","event_id":"988420b9052ff317ebe3106e462997024cbf5dd0ed4f6fedfdadd89cc98a203f","replay_run_id":"golden-a","source_sequence":10,"reason_code":"LATE_FOR_AGGREGATION"},
-    {"quality_event_id":"c86c9f5f6d77ef8f0e784ce672ce62756dd097fe5bc406e0bc7e8d6187000753","quality_type":"INVALID","event_id":"4060db5a89db1d165b0688a11682224e157970a2f858f6e715be88456ed99efa","replay_run_id":"golden-b","source_sequence":3,"reason_code":"INVALID_IDENTIFIER"},
-    {"quality_event_id":"a7a157a15aed4b24e80a9496dabe7a3b6532dbfc50cf1078b000e26180a4d822","quality_type":"DUPLICATE","event_id":"e3232a8494b32c8e185c385c0216cdc23a6c283867bdb0c627505e46b7ab7a21","replay_run_id":"golden-b","source_sequence":0,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"9a33a399ed6fcfc4b2532323d8adb693b0f03f3d70e885167eead2d8773eea31","quality_type":"DUPLICATE","event_id":"3e1a8360cef7784d684fbe49da85c583e09308ff210f3c2fbbb7bac3971a8794","replay_run_id":"golden-b","source_sequence":1,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"5e959ef3a0fb25f647eb2da9ca47db418a90d0bcf39e87ffe678f8e2730ef630","quality_type":"DUPLICATE","event_id":"05a9173fd8f20d205e07bc13ed60945103e41ad62d96a84ada50d6a57c1f0d43","replay_run_id":"golden-b","source_sequence":2,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"e8168863086b2194107fd86879d3484b62e4291a975178fcdabcf3f1b682a99a","quality_type":"DUPLICATE","event_id":"0cb41e6774b0b297c54d5ddff1b57dc1b3a4376861f9eb821c0f0174d9563017","replay_run_id":"golden-b","source_sequence":4,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"f7d4a98d34da16fdb5abf05cbd1e1e44eebc96ffea14ff1489aa18adfc9511c7","quality_type":"DUPLICATE","event_id":"abe3b5c9679e0712d15de385ae6e6b9e98f18c48b6b4dd3e59b020cb095212da","replay_run_id":"golden-b","source_sequence":5,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"6b733269eea9f2f34b887923aa23aaeac835b3ed8f91cc56a328b393c12ddfe1","quality_type":"DUPLICATE","event_id":"0577c8676d68e583087447de6957d1ded6171d3de55c27dbd07afb972673910c","replay_run_id":"golden-b","source_sequence":6,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"8326d69d4f316db912f06e4f03bcf5cddae762b5b3244554f75712f289448ad3","quality_type":"DUPLICATE","event_id":"37c901a5f8e96be0286dd03fd298b0840b100eb2951b88f26022d3f9b2e1a789","replay_run_id":"golden-b","source_sequence":7,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"ad11e93ab8d9b2bb018b136ea2c160691954b0cadc42b8b288b43e4ff9d821a5","quality_type":"DUPLICATE","event_id":"c0902e50c81eb8001ce17fc033b0733a3e0e6aef4ac6b07a2da395829ec40d13","replay_run_id":"golden-b","source_sequence":8,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"34556af7333c74962dd31b759bec9bd781f87dde362d8e8b4ef2a0544bb69898","quality_type":"DUPLICATE","event_id":"386ad8df6e55a76318d05734e57e90dbdfa7f6d685a5ccc9454df4fabb80bdf4","replay_run_id":"golden-b","source_sequence":9,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"7b2cd71942efeb5935490d077ac4c3418ee11860fc3455af09d7a0a4ecf467a7","quality_type":"DUPLICATE","event_id":"988420b9052ff317ebe3106e462997024cbf5dd0ed4f6fedfdadd89cc98a203f","replay_run_id":"golden-b","source_sequence":10,"reason_code":"DUPLICATE_WITHIN_RETENTION"},
-    {"quality_event_id":"c1b60fb575aaeeda8bbb6f650629e7518597a59cc31afef5794b23667518bb12","quality_type":"DUPLICATE","event_id":"1f256fedeb9f03fc3342a9f0a8ab224e3fa26fbded5c65aeea9a38fd7d493056","replay_run_id":"golden-b","source_sequence":11,"reason_code":"DUPLICATE_WITHIN_RETENTION"}
+    {"quality_event_id":"88e3f46d1ffa86deadafabc7ec3f8e2515de8d41bdf1177adc8967173c35602d","quality_type":"INVALID","event_id":"4060db5a89db1d165b0688a11682224e157970a2f858f6e715be88456ed99efa","replay_run_id":"golden-a","source_sequence":3,"reason_code":"INVALID_IDENTIFIER"},
+    {"quality_event_id":"6d8fda9234601ef22ba621c64537063c19942396a90488578bb91b74b22161c7","quality_type":"LATE","event_id":"988420b9052ff317ebe3106e462997024cbf5dd0ed4f6fedfdadd89cc98a203f","replay_run_id":"golden-a","source_sequence":10,"reason_code":"LATE_FOR_AGGREGATION"},
+    {"quality_event_id":"45261c00fa7cf97094383b16305639d98ae01d1bb0f4b33a1f3fb557d79eff1b","quality_type":"INVALID","event_id":"4060db5a89db1d165b0688a11682224e157970a2f858f6e715be88456ed99efa","replay_run_id":"golden-b","source_sequence":3,"reason_code":"INVALID_IDENTIFIER"}
   ],
   "redis_active_carts": {
     "1": {
-      "101": "11|1511658004000|1511658005000"
+      "101": "11|1511658005000|1511658005000"
     },
     "2": {}
+  },
+  "redis_user_features": {
+    "1": {
+      "feature_version": "1511658060000",
+      "feature_id": "38c38b848ae4916330b95a1bf40d3d77ad5a4bae0e1afb2d72700e7896c9aa56",
+      "window_start": "2017-11-26 01:00:00.000",
+      "window_end": "2017-11-26 01:01:00.000",
+      "event_count": "5",
+      "pv_count": "1",
+      "cart_count": "3",
+      "fav_count": "0",
+      "buy_count": "1",
+      "distinct_items": "2"
+    },
+    "2": {
+      "feature_version": "1511658060000",
+      "feature_id": "97994506a31e163b2422b0056534deb4fae74b8146a138209e4e482749b2da61",
+      "window_start": "2017-11-26 01:00:00.000",
+      "window_end": "2017-11-26 01:01:00.000",
+      "event_count": "3",
+      "pv_count": "0",
+      "cart_count": "1",
+      "fav_count": "1",
+      "buy_count": "1",
+      "distinct_items": "2"
+    }
   }
 }

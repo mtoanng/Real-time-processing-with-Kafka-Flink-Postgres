@@ -28,6 +28,12 @@ job_running() {
     'import json,sys; raise SystemExit(not any(job.get("state") == "RUNNING" for job in json.load(sys.stdin).get("jobs", [])))'
 }
 
+clickhouse_ready() {
+  "${compose[@]}" exec -T clickhouse sh -lc \
+    'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --query "SELECT 1"' \
+    >/dev/null
+}
+
 if [[ "${RUNTIME_IMAGES_PREBUILT:-false}" == "true" ]]; then
   build_args=(--no-build)
 else
@@ -37,9 +43,13 @@ fi
 "${compose[@]}" up -d "${build_args[@]}" \
   kafka schema-registry clickhouse redis \
   flink-jobmanager flink-taskmanager
+wait_for "ClickHouse" clickhouse_ready
+"${compose[@]}" exec -T clickhouse sh -lc \
+  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
+  < infra/clickhouse/schema.sql
 "${compose[@]}" run --rm kafka-init
 "${compose[@]}" run --rm flink-checkpoint-init
-"${compose[@]}" up -d redis-cart-materializer
+"${compose[@]}" up -d redis-cart-materializer redis-feature-materializer
 wait_for "Flink JobManager" curl -fsS http://localhost:8082/jobs/overview
 wait_for "Flink TaskManager" taskmanager_ready
 wait_for "Schema Registry" curl -fsS http://localhost:8081/subjects

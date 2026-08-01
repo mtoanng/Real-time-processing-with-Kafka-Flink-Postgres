@@ -1,4 +1,4 @@
-"""Runtime configuration for the single SQL/PyFlink streaming job.
+"""Runtime configuration for the single Flink Table/SQL streaming job.
 
 The configuration names the Kafka contracts and recovery policy; it does not
 contain business rules.  Core startup needs Kafka, Schema Registry, Flink,
@@ -42,6 +42,7 @@ class PipelineConfig:
     behavior_topic: str
     raw_topic: str
     metrics_topic: str
+    user_features_topic: str
     quality_topic: str
     cart_mutation_topic: str
     consumer_group: str
@@ -50,7 +51,6 @@ class PipelineConfig:
     restart_attempts: int
     restart_delay_ms: int
     dedup_retention_hours: int
-    cart_state_ttl_hours: int
     max_out_of_orderness_ms: int
     bounded: bool
     connector_jar: Path | None
@@ -84,17 +84,17 @@ class PipelineConfig:
             behavior_topic=os.getenv("KAFKA_TOPIC", "user-behavior-events"),
             raw_topic=os.getenv("KAFKA_RAW_OUTPUT_TOPIC", "taobao-raw-events"),
             metrics_topic=os.getenv("KAFKA_METRICS_OUTPUT_TOPIC", "taobao-item-metrics-1m"),
+            user_features_topic=os.getenv("KAFKA_USER_FEATURES_TOPIC", "taobao-user-features-1m"),
             quality_topic=os.getenv("KAFKA_QUALITY_OUTPUT_TOPIC", "taobao-quality-events"),
             cart_mutation_topic=os.getenv(
                 "KAFKA_CART_MUTATION_TOPIC", "taobao-active-cart-mutations"
             ),
-            consumer_group=os.getenv("KAFKA_CONSUMER_GROUP", "taobao-python-sql-pipeline"),
+            consumer_group=os.getenv("KAFKA_CONSUMER_GROUP", "taobao-table-sql-features-v1"),
             checkpoint_dir=checkpoint_dir,
             checkpoint_interval_ms=_positive_int("FLINK_CHECKPOINT_INTERVAL_MS", 60_000),
             restart_attempts=_positive_int("FLINK_RESTART_ATTEMPTS", 3),
             restart_delay_ms=_positive_int("FLINK_RESTART_DELAY_MS", 10_000),
             dedup_retention_hours=_positive_int("FLINK_DEDUP_RETENTION_HOURS", 168),
-            cart_state_ttl_hours=_positive_int("FLINK_CART_STATE_TTL_HOURS", 168),
             max_out_of_orderness_ms=_positive_int("FLINK_MAX_OUT_OF_ORDERNESS_MS", 5_000),
             bounded=bounded,
             connector_jar=Path(connector) if connector else None,

@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "taobao-replay"
+name = "taobao-streaming-platform"
 version = "0.1.0"
-description = "Bounded-memory replay and Kafka publishing for Taobao user behavior data"
+description = "Streaming pipeline services, shared contracts, and deterministic replay client"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -23,10 +23,14 @@ taobao-replay = "taobao_replay.cli:main"
 taobao-catalog = "taobao_catalog.generator:main"
 
 [tool.setuptools]
-package-dir = {"" = "producer/src"}
+packages = ["taobao_api", "taobao_catalog", "taobao_events", "taobao_replay", "taobao_serving"]
 
-[tool.setuptools.packages.find]
-where = ["producer/src"]
+[tool.setuptools.package-dir]
+taobao_api = "services/taobao_api"
+taobao_catalog = "tools/taobao_catalog"
+taobao_events = "libs/taobao_events"
+taobao_replay = "clients/taobao_replay"
+taobao_serving = "services/taobao_serving"
 
 [tool.ruff]
 line-length = 100

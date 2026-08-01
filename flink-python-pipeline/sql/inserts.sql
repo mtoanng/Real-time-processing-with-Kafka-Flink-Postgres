@@ -1,5 +1,4 @@
--- Each named statement is attached to the same StreamExecutionEnvironment by
--- StatementSet.attach_as_datastream().
+-- All named inserts are submitted together as one optimized StatementSet.
 -- name: raw
 INSERT INTO raw_events_out
 SELECT
@@ -29,9 +28,14 @@ SELECT
     MIN(replay_run_id),
     UNIX_TIMESTAMP(DATE_FORMAT(window_end, 'yyyy-MM-dd HH:mm:ss')) * 1000
 FROM TABLE(
-    TUMBLE(TABLE on_time_events, DESCRIPTOR(rowtime), INTERVAL '1' MINUTE)
+    TUMBLE(TABLE on_time_events, DESCRIPTOR(event_time), INTERVAL '1' MINUTE)
 )
 GROUP BY window_start, window_end, item_id, category_id
+;
+
+-- name: user-features
+INSERT INTO user_features_out
+SELECT * FROM user_features_1m
 ;
 
 -- name: quality

@@ -1,1 +1,1 @@
-"""SQL/PyFlink authoring surface for the Taobao streaming platform."""
+"""Python Table API submission surface for the Flink SQL streaming plan."""

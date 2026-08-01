@@ -11,7 +11,9 @@ CREATE TABLE behavior_events (
     behavior_type STRING NOT NULL,
     event_time_ms BIGINT NOT NULL,
     source_sequence BIGINT NOT NULL,
-    replay_run_id STRING NOT NULL
+    replay_run_id STRING NOT NULL,
+    event_time AS TO_TIMESTAMP_LTZ(event_time_ms, 3),
+    WATERMARK FOR event_time AS event_time - INTERVAL '{{WATERMARK_DELAY_SECONDS}}' SECOND
 ) WITH (
     'connector' = 'kafka',
     'topic' = '{{BEHAVIOR_TOPIC}}',
@@ -19,6 +21,8 @@ CREATE TABLE behavior_events (
     'properties.group.id' = '{{CONSUMER_GROUP}}-behavior',
     'scan.startup.mode' = 'earliest-offset',
     {{BEHAVIOR_BOUNDED_OPTION}}
+    'scan.watermark.emit.strategy' = 'on-event',
+    'scan.watermark.idle-timeout' = '30s',
     'value.format' = 'avro-confluent',
     'value.avro-confluent.url' = '{{SCHEMA_REGISTRY_URL}}'{{SOURCE_SECURITY_OPTIONS}}
 );
@@ -62,6 +66,29 @@ CREATE TABLE metrics_out (
     'format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
 );
 
+CREATE TABLE user_features_out (
+    feature_id STRING,
+    window_start STRING,
+    window_end STRING,
+    user_id BIGINT,
+    event_count BIGINT,
+    pv_count BIGINT,
+    cart_count BIGINT,
+    fav_count BIGINT,
+    buy_count BIGINT,
+    distinct_items BIGINT,
+    feature_version BIGINT,
+    record_version BIGINT
+) WITH (
+    -- SINK: append-only feature history. ClickHouse retains every closed
+    -- window; the Redis adapter keeps only the newest feature_version/user.
+    'connector' = 'kafka',
+    'topic' = '{{USER_FEATURES_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
+
 CREATE TABLE quality_events_out (
     quality_event_id STRING,
     quality_type STRING,
@@ -78,7 +105,8 @@ CREATE TABLE quality_events_out (
     observed_at_ms BIGINT,
     record_version BIGINT
 ) WITH (
-    -- SINK: durable INVALID, DUPLICATE and LATE audit records.
+    -- SINK: durable INVALID and LATE audit records. Duplicate counts are
+    -- reconciled from valid input minus accepted unique output.
     'connector' = 'kafka',
     'topic' = '{{QUALITY_TOPIC}}',
     'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',

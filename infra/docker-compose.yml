@@ -6,9 +6,10 @@ x-flink-environment: &flink-environment
   KAFKA_TOPIC: user-behavior-events
   KAFKA_RAW_OUTPUT_TOPIC: taobao-raw-events
   KAFKA_METRICS_OUTPUT_TOPIC: taobao-item-metrics-1m
+  KAFKA_USER_FEATURES_TOPIC: taobao-user-features-1m
   KAFKA_QUALITY_OUTPUT_TOPIC: taobao-quality-events
   KAFKA_CART_MUTATION_TOPIC: taobao-active-cart-mutations
-  KAFKA_CONSUMER_GROUP: taobao-python-sql-pipeline
+  KAFKA_CONSUMER_GROUP: taobao-table-sql-features-v1
   KAFKA_SOURCE_BOUNDED: ${KAFKA_SOURCE_BOUNDED:-false}
   KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
   KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-}
@@ -21,7 +22,6 @@ x-flink-environment: &flink-environment
   FLINK_RESTART_ATTEMPTS: ${FLINK_RESTART_ATTEMPTS:-3}
   FLINK_RESTART_DELAY_MS: ${FLINK_RESTART_DELAY_MS:-10000}
   FLINK_DEDUP_RETENTION_HOURS: ${FLINK_DEDUP_RETENTION_HOURS:-168}
-  FLINK_CART_STATE_TTL_HOURS: ${FLINK_CART_STATE_TTL_HOURS:-168}
   FLINK_MAX_OUT_OF_ORDERNESS_MS: ${FLINK_MAX_OUT_OF_ORDERNESS_MS:-5000}
 
 x-flink-volumes: &flink-volumes
@@ -73,7 +73,7 @@ services:
     command:
       - |
         until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list >/dev/null 2>&1; do sleep 2; done
-        for topic in user-behavior-events taobao-raw-events taobao-item-metrics-1m taobao-quality-events; do
+        for topic in user-behavior-events taobao-raw-events taobao-item-metrics-1m taobao-user-features-1m taobao-quality-events; do
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic "$$topic" --partitions 1 --replication-factor 1
         done
         for topic in product-catalog-cdc taobao-active-cart-mutations; do
@@ -132,6 +132,30 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_CART_TTL_SECONDS: ${REDIS_CART_TTL_SECONDS:-604800}
+
+  redis-feature-materializer:
+    profiles: ["core"]
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    image: ${APP_RUNTIME_IMAGE:-taobao-app-runtime:local}
+    command: ["python", "-m", "taobao_serving.redis_features"]
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      KAFKA_USER_FEATURES_TOPIC: taobao-user-features-1m
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+      KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_FEATURE_TTL_SECONDS: ${REDIS_FEATURE_TTL_SECONDS:-86400}
 
   flink-jobmanager:
     profiles: ["core"]
