@@ -57,6 +57,9 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertIn("INSERT INTO cart_mutations_out", INSERTS)
         self.assertIn("clickhouse-client", START)
         self.assertIn("infra/clickhouse/schema.sql", START)
+        self.assertIn("FLINK_PLAN_ONLY=true", START)
+        self.assertIn("artifacts/flink-plan.txt", START)
+        self.assertIn('wait_for "completed Flink checkpoint"', START)
 
     def test_active_flink_authoring_surface_is_table_api_only(self) -> None:
         package = ROOT / "flink-python-pipeline/taobao_flink"

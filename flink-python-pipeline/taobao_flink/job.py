@@ -7,6 +7,8 @@ Flink JVM runtime; no Python callback is present in the data path.
 
 from __future__ import annotations
 
+import os
+
 from pyflink.table import EnvironmentSettings, TableEnvironment
 
 from taobao_flink.config import PipelineConfig
@@ -63,7 +65,11 @@ def build_job(config: PipelineConfig):
 
 def main() -> None:
     """Load validated environment configuration and submit the SQL job."""
-    build_job(PipelineConfig.from_environment()).execute()
+    statement_set = build_job(PipelineConfig.from_environment())
+    if os.getenv("FLINK_PLAN_ONLY", "false").lower() == "true":
+        print(statement_set.explain())
+        return
+    statement_set.execute()
 
 
 if __name__ == "__main__":

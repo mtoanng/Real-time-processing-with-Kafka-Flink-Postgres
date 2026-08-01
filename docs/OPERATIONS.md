@@ -60,6 +60,11 @@ curl -fsS http://localhost:8082/jobs/overview
 curl -fsS http://localhost:8082/taskmanagers
 ```
 
+`start.sh` first runs `StatementSet.explain()` and writes the optimized plan to
+`artifacts/flink-plan.txt`. A source-to-sink changelog incompatibility therefore
+fails startup before the real job is submitted or any replay is allowed.
+It also waits for the first completed checkpoint before reporting success.
+
 The job must be `RUNNING` and at least one TaskManager must be registered.
 After replay, wait for the configured checkpoint interval, then inspect:
 

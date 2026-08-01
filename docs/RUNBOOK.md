@@ -265,6 +265,15 @@ ClickHouse, Redis, the cart and online-feature materializers, Flink JobManager/T
 creates topics, registers Avro and submits one detached Flink Table/SQL job
 from the thin Python runner.
 
+Before submission, the script asks the Flink planner to optimize the complete
+five-sink `StatementSet`. The optimized plan is saved as
+`artifacts/flink-plan.txt`; any changelog/sink incompatibility makes
+`start.sh` fail before replay.
+
+Startup returns only after the submitted job is `RUNNING` and has completed at
+least one checkpoint. This validates checkpoint storage and permissions before
+the workload begins.
+
 `start.sh` also applies the idempotent ClickHouse schema after its health check,
 so a retained ClickHouse volume receives newly added tables. The destructive
 volume reset above remains necessary for the first migration from the retired
@@ -282,6 +291,12 @@ curl -fsS http://localhost:8082/taskmanagers
 
 Expected: one `RUNNING` job and at least one TaskManager. If not, stop here and
 inspect logs; do not replay input into a failed job.
+
+Also require a non-empty planner artifact:
+
+```bash
+test -s artifacts/flink-plan.txt
+```
 
 ## 7. Run the bounded core E2E fixture
 
@@ -341,7 +356,13 @@ test -s data/UserBehavior.csv
 docker compose -f infra/docker-compose.yml --profile core --profile catalog \
   --profile api down -v --remove-orphans
 STARTUP_TIMEOUT_SECONDS=180 bash scripts/start.sh
+test -s artifacts/flink-plan.txt
+curl -fsS http://localhost:8082/jobs/overview | grep -q '"state":"RUNNING"'
 ```
+
+Do not start the full replay unless all three commands above succeed. This is
+the same planner and runtime image used by the capacity run, not a static SQL
+text check.
 
 The host replay client needs its Kafka extras even though the core runtime
 services are already containers:

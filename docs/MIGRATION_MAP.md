@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | Kafka/Confluent Avro source | SQL + packaged JVM connector | implemented, static |
 | Validation | Flink SQL | implemented, static |
-| Event-ID dedup + TTL | SQL `ROW_NUMBER`, Table state TTL | implemented, static |
+| Event-ID dedup + TTL | Processing-time keep-first SQL `ROW_NUMBER`, Table state TTL | implemented, static |
 | Watermarks | SQL DDL, bounded disorder, on-event emission | implemented, static |
 | Late routing | SQL `CURRENT_WATERMARK` | implemented, static |
 | One-minute metrics | Flink SQL | implemented, static |

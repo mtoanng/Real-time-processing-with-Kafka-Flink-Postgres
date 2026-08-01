@@ -19,8 +19,10 @@ Python replay/API -> Kafka Avro -> Flink Table/SQL
 The Kafka Table source defines a bounded-out-of-orderness watermark and uses
 Flink 1.20's `scan.watermark.emit.strategy='on-event'`. Late classification is
 therefore driven by event arrival rather than Python bundle or periodic timer
-timing. SQL `ROW_NUMBER` retains the first `event_id` within the configured
-Table state TTL. Individual duplicate audit rows are not emitted; reconciliation
+timing. SQL `ROW_NUMBER` ordered by processing time retains the first occurrence
+of each `event_id` observed by Flink within the configured Table state TTL. This
+dedup boundary is insert-only; event time remains independent for late routing
+and windows. Individual duplicate audit rows are not emitted; reconciliation
 derives their count from valid input and accepted unique output.
 
 No Python UDF or DataStream callback exists in the record path. This removes

@@ -5,7 +5,8 @@
 - `decoded = invalid + valid`.
 - `valid = duplicate + accepted_unique` within the 168-hour default SQL state
   TTL. Duplicate count is reconciled; individual duplicate audit rows are not
-  emitted.
+  emitted. Dedup keeps the first occurrence observed by Flink using processing
+  time; event time is not used to choose a duplicate winner.
 - `accepted_unique = on_time + late_for_aggregation`.
 - Canonical raw contains all accepted unique events, including late events.
 - Metrics contain on-time events only and use

@@ -13,6 +13,7 @@ CREATE TABLE behavior_events (
     source_sequence BIGINT NOT NULL,
     replay_run_id STRING NOT NULL,
     event_time AS TO_TIMESTAMP_LTZ(event_time_ms, 3),
+    processing_time AS PROCTIME(),
     WATERMARK FOR event_time AS event_time - INTERVAL '{{WATERMARK_DELAY_SECONDS}}' SECOND
 ) WITH (
     'connector' = 'kafka',

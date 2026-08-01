@@ -11,6 +11,7 @@ SELECT
     source_sequence,
     replay_run_id,
     event_time,
+    processing_time,
     CASE
         WHEN event_id IS NULL OR CHAR_LENGTH(TRIM(event_id)) = 0 THEN 'INVALID_EVENT_ID'
         WHEN user_id <= 0 OR item_id <= 0 OR category_id <= 0 THEN 'INVALID_IDENTIFIER'
@@ -24,12 +25,14 @@ FROM behavior_events;
 CREATE TEMPORARY VIEW valid_events AS
 SELECT
     event_id, user_id, item_id, category_id, behavior_type,
-    event_time_ms, source_sequence, replay_run_id, event_time
+    event_time_ms, source_sequence, replay_run_id, event_time, processing_time
 FROM classified_events
 WHERE validation_reason IS NULL;
 
 -- This exact ROW_NUMBER pattern is Flink SQL's native streaming
--- deduplication. ORDER BY the rowtime attribute ASC keeps the first event_id;
+-- deduplication. Processing-time ASC keeps the first occurrence observed by
+-- Flink and therefore produces an insert-only result that append Kafka sinks
+-- can consume. Event time remains independent for watermarks and windows.
 -- table.exec.state.ttl bounds how long that identity is remembered.
 CREATE TEMPORARY VIEW accepted_unique_events AS
 SELECT
@@ -38,10 +41,10 @@ SELECT
 FROM (
     SELECT
         event_id, user_id, item_id, category_id, behavior_type,
-        event_time_ms, source_sequence, replay_run_id, event_time,
+        event_time_ms, source_sequence, replay_run_id, event_time, processing_time,
         ROW_NUMBER() OVER (
             PARTITION BY event_id
-            ORDER BY event_time ASC
+            ORDER BY processing_time ASC
         ) AS row_num
     FROM valid_events
 )
