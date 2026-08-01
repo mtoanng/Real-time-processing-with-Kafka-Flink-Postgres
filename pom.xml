@@ -18,8 +18,8 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <flink.version>1.20.2</flink.version>
-        <kafka.connector.version>3.3.0-1.20</kafka.connector.version>
+        <flink.version>2.2.1</flink.version>
+        <kafka.connector.version>5.0.0-2.2</kafka.connector.version>
         <avro.version>1.11.3</avro.version>
         <maven.shade.plugin.version>3.4.0</maven.shade.plugin.version>
     </properties>

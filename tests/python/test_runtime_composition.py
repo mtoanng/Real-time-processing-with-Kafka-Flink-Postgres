@@ -9,6 +9,8 @@ COMPOSE = (ROOT / "infra/docker-compose.yml").read_text(encoding="utf-8")
 JOB = (ROOT / "flink-python-pipeline/taobao_flink/job.py").read_text(encoding="utf-8")
 INSERTS = (ROOT / "flink-python-pipeline/sql/inserts.sql").read_text(encoding="utf-8")
 START = (ROOT / "scripts/start.sh").read_text(encoding="utf-8")
+FLINK_IMAGE = (ROOT / "infra/flink-python.Dockerfile").read_text(encoding="utf-8")
+POM = (ROOT / "pom.xml").read_text(encoding="utf-8")
 
 
 class RuntimeCompositionTests(unittest.TestCase):
@@ -75,6 +77,12 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertFalse((ROOT / "flink-jobs").exists())
         authored_java = list((ROOT / "flink-connectors").rglob("*.java"))
         self.assertEqual([], authored_java)
+
+    def test_flink_runtime_and_connectors_are_compatible_release_lines(self) -> None:
+        self.assertIn("FROM flink:2.2.1-scala_2.12-java17", FLINK_IMAGE)
+        self.assertIn("apache-flink==2.2.1", FLINK_IMAGE)
+        self.assertIn("<flink.version>2.2.1</flink.version>", POM)
+        self.assertIn("<kafka.connector.version>5.0.0-2.2</kafka.connector.version>", POM)
 
     def test_replay_client_is_outside_the_pipeline_service_boundary(self) -> None:
         self.assertTrue((ROOT / "clients/taobao_replay").is_dir())

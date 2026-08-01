@@ -17,7 +17,7 @@ Python replay/API -> Kafka Avro -> Flink Table/SQL
 ```
 
 The Kafka Table source defines a bounded-out-of-orderness watermark and uses
-Flink 1.20's `scan.watermark.emit.strategy='on-event'`. Late classification is
+Flink 2.2's `scan.watermark.emit.strategy='on-event'`. Late classification is
 therefore driven by event arrival rather than Python bundle or periodic timer
 timing. SQL `ROW_NUMBER` ordered by processing time retains the first occurrence
 of each `event_id` observed by Flink within the configured Table state TTL. This

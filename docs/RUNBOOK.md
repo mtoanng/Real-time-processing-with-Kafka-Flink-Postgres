@@ -142,9 +142,8 @@ ssh -i taobao-streaming-admin.pem ubuntu@EC2_PUBLIC_IP
 
 ## 2. Bootstrap Docker and build prerequisites
 
-On the EC2 host, install Git, Make, Python, Maven and a JDK capable of compiling the
-project's Java 11 target when using the manual checks path. Ubuntu 24.04's JDK
-17 is suitable for that build target. The automated release builds the
+On the EC2 host, install Git, Make, Python, Maven and Java 17, the runtime version
+recommended for Flink 2.2. The automated release builds the
 multi-stage Docker image and does not require Maven on the host. Install Docker
 Engine and the Compose plugin from Docker's official APT repository:
 
