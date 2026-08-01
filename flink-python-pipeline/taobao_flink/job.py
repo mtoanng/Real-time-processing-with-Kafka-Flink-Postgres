@@ -8,7 +8,7 @@ serving store directly.
 
 from __future__ import annotations
 
-from pyflink.common import Duration
+from pyflink.common import Configuration, Duration
 from pyflink.common.restart_strategy import RestartStrategies
 from pyflink.common.watermark_strategy import TimestampAssigner, WatermarkStrategy
 from pyflink.datastream import CheckpointingMode, StreamExecutionEnvironment
@@ -57,8 +57,14 @@ def _watermark_strategy(config: PipelineConfig) -> WatermarkStrategy:
 
 def _configure(config: PipelineConfig):
     """Configure checkpoint-consistent Flink state, restart policy and SQL runtime."""
-    env = StreamExecutionEnvironment.get_execution_environment()
+    flink_config = Configuration()
+    flink_config.set_string("state.backend.type", "rocksdb")
+    flink_config.set_boolean("execution.checkpointing.incremental", True)
+    env = StreamExecutionEnvironment.get_execution_environment(flink_config)
     env.set_parallelism(1)
+    # Full-source replay creates tens of millions of dedup keys. Keep keyed
+    # state off heap and checkpoint RocksDB incrementally so state size is
+    # bounded by disk rather than the TaskManager JVM heap.
     env.enable_checkpointing(config.checkpoint_interval_ms, CheckpointingMode.EXACTLY_ONCE)
     checkpoint = env.get_checkpoint_config()
     checkpoint.set_checkpoint_storage(FileSystemCheckpointStorage(config.checkpoint_dir))
@@ -129,6 +135,15 @@ def build_job(config: PipelineConfig):
     late_quality = on_time.get_side_output(LATE_EVENTS)
     quality = invalid_quality.union(duplicate_quality, late_quality)
 
+    # External Python process operators do not propagate the input record
+    # timestamp to their emitted records. Reassign it after late routing so
+    # the Table API metadata rowtime column always receives a timestamp.
+    metric_input = (
+        on_time.assign_timestamps_and_watermarks(_watermark_strategy(config))
+        .name("AssignMetricEventTimeAndWatermarks")
+        .uid("assign-metric-event-time-watermarks")
+    )
+
     cart_mutations = (
         accepted.key_by(lambda row: f"{row.user_id}:{row.item_id}")
         .process(
@@ -148,7 +163,7 @@ def build_job(config: PipelineConfig):
     )
     table_env.create_temporary_view(
         "on_time_events",
-        table_env.from_data_stream(on_time, on_time_schema),
+        table_env.from_data_stream(metric_input, on_time_schema),
     )
     table_env.create_temporary_view("quality_events", table_env.from_data_stream(quality))
     table_env.create_temporary_view("cart_mutations", table_env.from_data_stream(cart_mutations))

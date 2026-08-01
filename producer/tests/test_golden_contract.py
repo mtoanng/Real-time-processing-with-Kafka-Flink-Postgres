@@ -1,29 +1,22 @@
 from __future__ import annotations
 
 import json
+import sys
 import unittest
 from collections import Counter, defaultdict
-from hashlib import sha256
 from pathlib import Path
 
 from taobao_replay.reader import iter_event_batches
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "flink-python-pipeline"))
+
+from taobao_flink.logic import quality_event_id  # noqa: E402
+
 FIXTURE = ROOT / "tests/fixtures/user_behavior_fixture.csv"
 EXPECTED = ROOT / "tests/fixtures/golden_outputs.json"
 RUN_IDS = ("golden-a", "golden-b")
 MAX_OUT_OF_ORDERNESS_MS = 5_000
-
-
-def quality_id(
-    quality_type: str,
-    event_id: str,
-    replay_run_id: str,
-    source_sequence: int,
-    reason_code: str,
-) -> str:
-    value = "\x1f".join((quality_type, event_id, replay_run_id, str(source_sequence), reason_code))
-    return sha256(value.encode()).hexdigest()
 
 
 class GoldenContractTests(unittest.TestCase):
@@ -139,7 +132,7 @@ class GoldenContractTests(unittest.TestCase):
     @staticmethod
     def quality_row(event, quality_type: str, reason_code: str) -> dict[str, object]:
         return {
-            "quality_event_id": quality_id(
+            "quality_event_id": quality_event_id(
                 quality_type,
                 event.event_id,
                 event.replay_run_id,

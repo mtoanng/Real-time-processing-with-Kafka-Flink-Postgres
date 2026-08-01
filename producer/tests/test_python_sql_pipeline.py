@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
 import sys
 import unittest
@@ -143,6 +144,10 @@ class PythonSqlPipelineTests(unittest.TestCase):
         first = quality_event_id("DUPLICATE", "event", "run-b", 7, "DUPLICATE_WITHIN_RETENTION")
         second = quality_event_id("DUPLICATE", "event", "run-b", 7, "DUPLICATE_WITHIN_RETENTION")
         self.assertEqual(first, second)
+        self.assertEqual(
+            "d0f267fde25049890cb39db83e3e18d06bc1696b6667fc8944dd6a03df474a12",
+            first,
+        )
 
     def test_redis_adapter_applies_idempotent_mutations(self) -> None:
         redis = FakeRedis()
@@ -180,6 +185,7 @@ class PythonSqlPipelineTests(unittest.TestCase):
         postgres = (ROOT / "infra/postgres/init.sql").read_text(encoding="utf-8")
         clickhouse = (ROOT / "infra/clickhouse/schema.sql").read_text(encoding="utf-8")
         operators = (PIPELINE / "taobao_flink/operators.py").read_text(encoding="utf-8")
+        job = (PIPELINE / "taobao_flink/job.py").read_text(encoding="utf-8")
         compose = (ROOT / "infra/docker-compose.yml").read_text(encoding="utf-8")
         connector = (ROOT / "infra/debezium/product-catalog-connector.json").read_text(
             encoding="utf-8"
@@ -193,7 +199,17 @@ class PythonSqlPipelineTests(unittest.TestCase):
         self.assertIn("StateTtlConfig.new_builder", operators)
         self.assertIn("DUPLICATE_WITHIN_RETENTION", operators)
         self.assertNotIn("ctx.output(", operators)
-        self.assertIn("yield DUPLICATES, _quality(", operators)
-        self.assertIn("yield INVALID_EVENTS, _quality(", operators)
-        self.assertIn("yield LATE_EVENTS, _quality(", operators)
+        side_output_tags = {
+            node.value.elts[0].id
+            for node in ast.walk(ast.parse(operators))
+            if isinstance(node, ast.Yield)
+            and isinstance(node.value, ast.Tuple)
+            and node.value.elts
+            and isinstance(node.value.elts[0], ast.Name)
+        }
+        self.assertEqual({"DUPLICATES", "INVALID_EVENTS", "LATE_EVENTS"}, side_output_tags)
+        self.assertIn("AssignMetricEventTimeAndWatermarks", job)
+        self.assertIn("table_env.from_data_stream(metric_input, on_time_schema)", job)
+        self.assertIn('set_string("state.backend.type", "rocksdb")', job)
+        self.assertIn('set_boolean("execution.checkpointing.incremental", True)', job)
         self.assertIn("cleanup.policy=compact", compose)

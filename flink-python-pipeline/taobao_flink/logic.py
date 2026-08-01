@@ -40,7 +40,7 @@ def quality_event_id(
     reason_code: str,
 ) -> str:
     """Create deterministic audit identity for an invalid, duplicate or late event."""
-    canonical = "|".join(
+    canonical = "\x1f".join(
         (quality_type, event_id or "", replay_run_id, str(source_sequence), reason_code)
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

@@ -161,6 +161,7 @@ services:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 2
+        taskmanager.memory.process.size: ${FLINK_TASKMANAGER_PROCESS_MEMORY:-4096m}
         state.checkpoints.dir: file:///var/lib/flink/checkpoints
     volumes: *flink-volumes
 

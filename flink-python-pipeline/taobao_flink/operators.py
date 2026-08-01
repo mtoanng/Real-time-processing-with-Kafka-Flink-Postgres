@@ -145,11 +145,14 @@ class DeduplicateEventId(KeyedProcessFunction):
     def process_element(self, value: Row, ctx: KeyedProcessFunction.Context):
         del ctx
         if self._seen.value():
-            yield DUPLICATES, _quality(
-                value,
-                "DUPLICATE",
-                "DUPLICATE_WITHIN_RETENTION",
-                "event_id was already observed within the configured state TTL",
+            yield (
+                DUPLICATES,
+                _quality(
+                    value,
+                    "DUPLICATE",
+                    "DUPLICATE_WITHIN_RETENTION",
+                    "event_id was already observed within the configured state TTL",
+                ),
             )
             return
         self._seen.update(True)
@@ -162,11 +165,14 @@ class RouteClassifiedEvent(ProcessFunction):
     def process_element(self, value: Row, ctx: ProcessFunction.Context):
         del ctx
         if value.validation_reason is not None:
-            yield INVALID_EVENTS, _quality(
-                value,
-                "INVALID",
-                value.validation_reason,
-                "event failed the source-faithful semantic contract",
+            yield (
+                INVALID_EVENTS,
+                _quality(
+                    value,
+                    "INVALID",
+                    value.validation_reason,
+                    "event failed the source-faithful semantic contract",
+                ),
             )
             return
         yield Row(
@@ -186,11 +192,14 @@ class RouteLateEvent(KeyedProcessFunction):
 
     def process_element(self, value: Row, ctx: KeyedProcessFunction.Context):
         if value.event_time_ms <= ctx.timer_service().current_watermark():
-            yield LATE_EVENTS, _quality(
-                value,
-                "LATE",
-                "LATE_FOR_AGGREGATION",
-                "event_time is at or behind the current watermark",
+            yield (
+                LATE_EVENTS,
+                _quality(
+                    value,
+                    "LATE",
+                    "LATE_FOR_AGGREGATION",
+                    "event_time is at or behind the current watermark",
+                ),
             )
             return
         yield value

@@ -43,6 +43,7 @@ class RuntimeCompositionTests(unittest.TestCase):
         self.assertIn("table_env.to_data_stream(classified)", JOB)
         self.assertIn('"table.exec.uid.generation", "ALWAYS"', JOB)
         self.assertIn("WatermarkStrategy.for_bounded_out_of_orderness", JOB)
+        self.assertIn("taskmanager.memory.process.size:", COMPOSE)
         self.assertNotIn("get_gateway", JOB)
         self.assertIn("statement_set.attach_as_datastream()", JOB)
         self.assertIn("image: ${FLINK_RUNTIME_IMAGE:-taobao-flink-runtime:local}", COMPOSE)
