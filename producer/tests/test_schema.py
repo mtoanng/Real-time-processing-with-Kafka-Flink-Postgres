@@ -25,7 +25,10 @@ class SchemaTests(unittest.TestCase):
                 "replay_run_id",
             ],
         )
-        self.assertEqual(schema["fields"][4]["type"]["symbols"], ["pv", "cart", "fav", "buy"])
+        # Flink SQL represents this field as STRING. Keeping the Avro transport
+        # type as string avoids an enum/string reader mismatch; the allowed
+        # values remain a semantic validation rule in the processing layer.
+        self.assertEqual(schema["fields"][4]["type"], "string")
 
 
 if __name__ == "__main__":

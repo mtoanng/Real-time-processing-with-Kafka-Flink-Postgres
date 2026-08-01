@@ -66,6 +66,7 @@ class PythonSqlPipelineTests(unittest.TestCase):
         ddl = render_tables(config())
         inserts = "\n".join(insert_statements())
         self.assertIn("'value.format' = 'avro-confluent'", ddl)
+        self.assertIn("behavior_type STRING NOT NULL", ddl)
         self.assertIn("'connector' = 'upsert-kafka'", ddl)
         self.assertIn("category_id AS source_category_id", inserts)
         self.assertNotIn("JOIN product_catalog", inserts)

@@ -10,11 +10,8 @@
     {"name": "category_id", "type": "long"},
     {
       "name": "behavior_type",
-      "type": {
-        "type": "enum",
-        "name": "BehaviorType",
-        "symbols": ["pv", "cart", "fav", "buy"]
-      }
+      "type": "string",
+      "doc": "Transport value validated semantically by Flink as pv, cart, fav, or buy."
     },
     {"name": "event_time_ms", "type": "long"},
     {"name": "source_sequence", "type": "long"},
