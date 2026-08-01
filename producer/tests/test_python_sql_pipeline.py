@@ -192,4 +192,8 @@ class PythonSqlPipelineTests(unittest.TestCase):
         self.assertNotIn("taobao-product-catalog-current", clickhouse)
         self.assertIn("StateTtlConfig.new_builder", operators)
         self.assertIn("DUPLICATE_WITHIN_RETENTION", operators)
+        self.assertNotIn("ctx.output(", operators)
+        self.assertIn("yield DUPLICATES, _quality(", operators)
+        self.assertIn("yield INVALID_EVENTS, _quality(", operators)
+        self.assertIn("yield LATE_EVENTS, _quality(", operators)
         self.assertIn("cleanup.policy=compact", compose)
