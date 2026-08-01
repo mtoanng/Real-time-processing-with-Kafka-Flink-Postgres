@@ -1,0 +1,42 @@
+[
+  {
+    "product_id": 100,
+    "category_id": 10,
+    "product_name": "Wireless Headphones Pro",
+    "price": "44.99",
+    "is_active": true,
+    "catalog_version": 2
+  },
+  {
+    "product_id": 101,
+    "category_id": 11,
+    "product_name": "Wireless Mouse",
+    "price": "19.99",
+    "is_active": false,
+    "catalog_version": 2
+  },
+  {
+    "product_id": 102,
+    "category_id": 12,
+    "product_name": "Mechanical Keyboard",
+    "price": "79.00",
+    "is_active": true,
+    "catalog_version": 1
+  },
+  {
+    "product_id": 103,
+    "category_id": 13,
+    "product_name": "USB-C Charger",
+    "price": "29.50",
+    "is_active": true,
+    "catalog_version": 1
+  },
+  {
+    "product_id": 104,
+    "category_id": 14,
+    "product_name": "Action Camera",
+    "price": "129.00",
+    "is_active": true,
+    "catalog_version": 1
+  }
+]

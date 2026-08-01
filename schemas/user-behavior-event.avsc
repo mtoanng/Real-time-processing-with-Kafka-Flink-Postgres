@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "name": "UserBehaviorEvent",
+  "namespace": "com.taobao.behavior.avro",
+  "doc": "One validated behavior from the public Taobao UserBehavior dataset.",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "user_id", "type": "long"},
+    {"name": "item_id", "type": "long"},
+    {"name": "category_id", "type": "long"},
+    {
+      "name": "behavior_type",
+      "type": {
+        "type": "enum",
+        "name": "BehaviorType",
+        "symbols": ["pv", "cart", "fav", "buy"]
+      }
+    },
+    {"name": "event_time_ms", "type": "long"},
+    {"name": "source_sequence", "type": "long"},
+    {"name": "replay_run_id", "type": "string"}
+  ]
+}

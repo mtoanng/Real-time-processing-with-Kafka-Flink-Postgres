@@ -1,0 +1,278 @@
+name: taobao-runtime
+
+x-flink-environment: &flink-environment
+  MALLOC_ARENA_MAX: "1"
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+  KAFKA_TOPIC: user-behavior-events
+  KAFKA_RAW_OUTPUT_TOPIC: taobao-raw-events
+  KAFKA_METRICS_OUTPUT_TOPIC: taobao-item-metrics-1m
+  KAFKA_QUALITY_OUTPUT_TOPIC: taobao-quality-events
+  KAFKA_CART_MUTATION_TOPIC: taobao-active-cart-mutations
+  KAFKA_CONSUMER_GROUP: taobao-python-sql-pipeline
+  KAFKA_SOURCE_BOUNDED: ${KAFKA_SOURCE_BOUNDED:-false}
+  KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+  KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-}
+  KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+  KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+  SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
+  SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO: ${SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO:-}
+  FLINK_CHECKPOINT_DIR: file:///var/lib/flink/checkpoints
+  FLINK_CHECKPOINT_INTERVAL_MS: ${FLINK_CHECKPOINT_INTERVAL_MS:-60000}
+  FLINK_RESTART_ATTEMPTS: ${FLINK_RESTART_ATTEMPTS:-3}
+  FLINK_RESTART_DELAY_MS: ${FLINK_RESTART_DELAY_MS:-10000}
+  FLINK_DEDUP_RETENTION_HOURS: ${FLINK_DEDUP_RETENTION_HOURS:-168}
+  FLINK_CART_STATE_TTL_HOURS: ${FLINK_CART_STATE_TTL_HOURS:-168}
+  FLINK_MAX_OUT_OF_ORDERNESS_MS: ${FLINK_MAX_OUT_OF_ORDERNESS_MS:-5000}
+
+x-flink-volumes: &flink-volumes
+  - flink_checkpoints:/var/lib/flink/checkpoints
+  - ../flink-python-pipeline:/opt/flink/app:ro
+
+services:
+  kafka:
+    profiles: ["core"]
+    image: apache/kafka:3.9.0
+    ports: ["127.0.0.1:9092:9092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,INTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  schema-registry:
+    profiles: ["core"]
+    image: confluentinc/cp-schema-registry:7.7.1
+    ports: ["127.0.0.1:8081:8081"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
+      SCHEMA_REGISTRY_DEBUG: "false"
+
+  kafka-init:
+    profiles: ["core"]
+    image: apache/kafka:3.9.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list >/dev/null 2>&1; do sleep 2; done
+        for topic in user-behavior-events taobao-raw-events taobao-item-metrics-1m taobao-quality-events; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic "$$topic" --partitions 1 --replication-factor 1
+        done
+        for topic in product-catalog-cdc taobao-active-cart-mutations; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic "$$topic" --partitions 1 --replication-factor 1 --config cleanup.policy=compact
+        done
+
+  clickhouse:
+    profiles: ["core"]
+    image: clickhouse/clickhouse-server:24.8
+    ports: ["127.0.0.1:8123:8123", "127.0.0.1:9000:9000"]
+    environment:
+      CLICKHOUSE_DB: taobao_behavior
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-local-clickhouse}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user $$CLICKHOUSE_USER --password $$CLICKHOUSE_PASSWORD --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    profiles: ["core"]
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis-cart-materializer:
+    profiles: ["core"]
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    image: ${APP_RUNTIME_IMAGE:-taobao-app-runtime:local}
+    command: ["python", "-m", "taobao_serving.redis_cart"]
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      KAFKA_CART_MUTATION_TOPIC: taobao-active-cart-mutations
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+      KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_CART_TTL_SECONDS: ${REDIS_CART_TTL_SECONDS:-604800}
+
+  flink-jobmanager:
+    profiles: ["core"]
+    build:
+      context: ..
+      dockerfile: infra/flink-python.Dockerfile
+    image: ${FLINK_RUNTIME_IMAGE:-taobao-flink-runtime:local}
+    command: jobmanager
+    ports: ["127.0.0.1:8082:8081"]
+    environment:
+      <<: *flink-environment
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        state.checkpoints.dir: file:///var/lib/flink/checkpoints
+    volumes: *flink-volumes
+
+  flink-taskmanager:
+    profiles: ["core"]
+    build:
+      context: ..
+      dockerfile: infra/flink-python.Dockerfile
+    image: ${FLINK_RUNTIME_IMAGE:-taobao-flink-runtime:local}
+    command: taskmanager
+    depends_on: [flink-jobmanager]
+    environment:
+      <<: *flink-environment
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        state.checkpoints.dir: file:///var/lib/flink/checkpoints
+    volumes: *flink-volumes
+
+  flink-checkpoint-init:
+    profiles: ["core"]
+    image: ${FLINK_RUNTIME_IMAGE:-taobao-flink-runtime:local}
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /var/lib/flink/checkpoints && chown -R 9999:9999 /var/lib/flink/checkpoints"]
+    volumes:
+      - flink_checkpoints:/var/lib/flink/checkpoints
+
+  flink-submit:
+    profiles: ["core"]
+    build:
+      context: ..
+      dockerfile: infra/flink-python.Dockerfile
+    image: ${FLINK_RUNTIME_IMAGE:-taobao-flink-runtime:local}
+    depends_on: [flink-jobmanager, flink-taskmanager]
+    entrypoint: ["/opt/flink/bin/flink"]
+    command:
+      - run
+      - -d
+      - -m
+      - flink-jobmanager:8081
+      - -py
+      - /opt/flink/app/run.py
+      - -pyfs
+      - /opt/flink/app
+    environment:
+      <<: *flink-environment
+    volumes: *flink-volumes
+
+  postgres:
+    profiles: ["catalog"]
+    image: postgres:16.4-alpine
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4", "-c", "max_wal_senders=4"]
+    ports: ["127.0.0.1:5432:5432"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-catalog}
+      POSTGRES_USER: ${POSTGRES_USER:-catalog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-catalog}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/001-catalog.sql:ro
+      - ../tests/fixtures/product_catalog_updates.sql:/fixtures/product_catalog_updates.sql:ro
+
+  kafka-connect:
+    profiles: ["catalog"]
+    image: quay.io/debezium/connect:3.0.8.Final
+    ports: ["127.0.0.1:8083:8083"]
+    depends_on: [postgres]
+    environment:
+      BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      GROUP_ID: product-catalog-connect
+      CONFIG_STORAGE_TOPIC: product-catalog-connect-config
+      OFFSET_STORAGE_TOPIC: product-catalog-connect-offsets
+      STATUS_STORAGE_TOPIC: product-catalog-connect-status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+      CONNECT_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-PLAIN}
+      CONNECT_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${KAFKA_SASL_USERNAME:-}" password="${KAFKA_SASL_PASSWORD:-}";
+      CONNECT_PRODUCER_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+      CONNECT_PRODUCER_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-PLAIN}
+      CONNECT_PRODUCER_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${KAFKA_SASL_USERNAME:-}" password="${KAFKA_SASL_PASSWORD:-}";
+      CONNECT_CONSUMER_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+      CONNECT_CONSUMER_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-PLAIN}
+      CONNECT_CONSUMER_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${KAFKA_SASL_USERNAME:-}" password="${KAFKA_SASL_PASSWORD:-}";
+
+  api:
+    profiles: ["api"]
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    image: ${APP_RUNTIME_IMAGE:-taobao-app-runtime:local}
+    restart: unless-stopped
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      KAFKA_TOPIC: user-behavior-events
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT}
+      KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:-}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
+      SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO: ${SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO:-}
+      CLICKHOUSE_ENDPOINT: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: taobao_behavior
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-local-clickhouse}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+volumes:
+  clickhouse_data:
+  flink_checkpoints:
+  postgres_data:
+  redis_data:

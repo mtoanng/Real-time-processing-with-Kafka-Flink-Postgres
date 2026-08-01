@@ -1,0 +1,82 @@
+# Taobao repository ignore rules
+
+# Build outputs
+target/
+build/
+out/
+*.class
+*.jar
+*.war
+*.ear
+!**/.mvn/wrapper/maven-wrapper.jar
+
+# IDE and editor files
+.idea/
+.idea./
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+build-logs/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+.env.cloud
+.env.cloud.local
+secrets/
+secure-connect-*.zip
+*.pem
+
+# Docker local state
+.docker/
+
+# Maven wrapper and generated Avro sources
+.mvn/wrapper/maven-wrapper.properties.copy
+.mvn/timing.properties
+**/generated-sources/
+
+# Test and Python caches
+coverage/
+*.exec
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+
+# Taobao source and generated demo data
+/data
+/artifacts/
+
+# Terraform state and local provider cache
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfplan
+infra/terraform/*.tfvars
+!infra/terraform/terraform.tfvars.example
+
+# Large temporary files
+*.tmp
+*.bak
+nul

@@ -1,0 +1,23 @@
+# =============================================================
+#  Đảm bảo line ending nhất quán giữa Windows / Mac / Linux
+#  Đặc biệt quan trọng cho shell scripts (LF).
+# =============================================================
+
+* text=auto eol=lf
+*.sh   text eol=lf
+*.bash text eol=lf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binary files
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.mp4  binary
+*.zip  binary
+*.jar  binary
+*.apk  binary

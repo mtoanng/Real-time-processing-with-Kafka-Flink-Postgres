@@ -1,0 +1,43 @@
+{
+  "cart": {
+    "user_id": 1,
+    "items": [
+      {
+        "product_id": 101,
+        "category_id": 11,
+        "added_at": 1511658004000,
+        "last_updated_at": 1511658005000
+      }
+    ]
+  },
+  "trending": {
+    "window_minutes": 15,
+    "as_of_ms": 1511658120000,
+    "products": [
+      {
+        "product_id": 100,
+        "product_name": "Wireless Headphones Pro",
+        "current_price": 44.99,
+        "views": 2,
+        "carts": 1,
+        "purchases": 1
+      },
+      {
+        "product_id": 102,
+        "product_name": "Mechanical Keyboard",
+        "current_price": 79.0,
+        "views": 0,
+        "carts": 1,
+        "purchases": 1
+      },
+      {
+        "product_id": 104,
+        "product_name": "Action Camera",
+        "current_price": 129.0,
+        "views": 1,
+        "carts": 0,
+        "purchases": 0
+      }
+    ]
+  }
+}

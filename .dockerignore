@@ -1,0 +1,11 @@
+*
+!pyproject.toml
+!producer/
+!producer/**
+!schemas/
+!schemas/**
+!pom.xml
+!flink-connectors/
+!flink-connectors/**
+!infra/
+!infra/**

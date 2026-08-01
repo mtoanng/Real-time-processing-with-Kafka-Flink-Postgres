@@ -1,0 +1,105 @@
+-- SOURCE: source-faithful behavior events from the external replay/API boundary.
+-- event_id is the replay-independent business identity. replay_run_id is only
+-- lineage, so neither canonical raw uniqueness nor metric grain includes it.
+-- Avro decoding remains a JVM connector capability; no Java business pipeline
+-- is authored by the Data Engineer.
+CREATE TABLE behavior_events (
+    event_id STRING NOT NULL,
+    user_id BIGINT NOT NULL,
+    item_id BIGINT NOT NULL,
+    category_id BIGINT NOT NULL,
+    behavior_type STRING NOT NULL,
+    event_time_ms BIGINT NOT NULL,
+    source_sequence BIGINT NOT NULL,
+    replay_run_id STRING NOT NULL
+) WITH (
+    'connector' = 'kafka',
+    'topic' = '{{BEHAVIOR_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'properties.group.id' = '{{CONSUMER_GROUP}}-behavior',
+    'scan.startup.mode' = 'earliest-offset',
+    {{BEHAVIOR_BOUNDED_OPTION}}
+    'value.format' = 'avro-confluent',
+    'value.avro-confluent.url' = '{{SCHEMA_REGISTRY_URL}}'{{SOURCE_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE raw_events_out (
+    event_id STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    behavior_type STRING,
+    event_time_ms BIGINT,
+    source_sequence BIGINT,
+    replay_run_id STRING,
+    record_version BIGINT
+) WITH (
+    -- SINK: Kafka materialization boundary consumed in batches by ClickHouse.
+    'connector' = 'kafka',
+    'topic' = '{{RAW_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE metrics_out (
+    window_start STRING,
+    item_id BIGINT,
+    source_category_id BIGINT,
+    pv_count BIGINT,
+    cart_count BIGINT,
+    fav_count BIGINT,
+    buy_count BIGINT,
+    unique_users BIGINT,
+    replay_run_id STRING,
+    record_version BIGINT
+) WITH (
+    -- SINK: one-minute event-time metrics; logical grain is item/category/window.
+    'connector' = 'kafka',
+    'topic' = '{{METRICS_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE quality_events_out (
+    quality_event_id STRING,
+    quality_type STRING,
+    event_id STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    behavior_type STRING,
+    event_time_ms BIGINT,
+    replay_run_id STRING,
+    source_sequence BIGINT,
+    reason_code STRING,
+    reason_message STRING,
+    observed_at_ms BIGINT,
+    record_version BIGINT
+) WITH (
+    -- SINK: durable INVALID, DUPLICATE and LATE audit records.
+    'connector' = 'kafka',
+    'topic' = '{{QUALITY_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
+
+CREATE TABLE cart_mutations_out (
+    operation STRING,
+    user_id BIGINT,
+    item_id BIGINT,
+    category_id BIGINT,
+    added_at_ms BIGINT,
+    last_updated_at_ms BIGINT,
+    PRIMARY KEY (user_id, item_id) NOT ENFORCED
+) WITH (
+    -- SINK: compacted serving mutation log. Python, not Flink, writes Redis.
+    'connector' = 'upsert-kafka',
+    'topic' = '{{CART_MUTATION_TOPIC}}',
+    'properties.bootstrap.servers' = '{{KAFKA_BOOTSTRAP_SERVERS}}',
+    'sink.delivery-guarantee' = 'at-least-once',
+    'key.format' = 'json',
+    'value.format' = 'json'{{KAFKA_SECURITY_OPTIONS}}
+);
