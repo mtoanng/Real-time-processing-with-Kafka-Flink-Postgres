@@ -13,8 +13,7 @@ processing pipeline.
 
 ## Architecture
 
-<img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/06337f00-8e6b-4299-be23-8c0b43a1de99" />
-
+<img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/3182acbb-df0b-495e-8d2b-b30db14f9dbd" />
 
 The behavior job is one Flink SQL plan. Flink publishes explicit Kafka output
 contracts instead of coupling computation directly to each database:
