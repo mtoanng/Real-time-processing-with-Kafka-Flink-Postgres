@@ -29,6 +29,7 @@ This separation lets Kafka absorb bursts and allows each serving system to use
 an ingestion pattern suited to its workload.
 
 ## Processing model
+<img width="1919" height="934" alt="Screenshot 2026-08-01 233232" src="https://github.com/user-attachments/assets/8d1b9ce1-a2ed-4aed-8ad0-c4befb42c1f6" />
 
 Each source event carries a deterministic `event_id` derived from stable source
 fields and `source_sequence`. `replay_run_id` records lineage only and never
